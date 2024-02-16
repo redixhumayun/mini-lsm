@@ -87,6 +87,13 @@ impl MemTable {
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
         self.map
             .insert(Bytes::from(_key.to_vec()), Bytes::from(_value.to_vec()));
+        let current_size = self
+            .approximate_size
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let key_value_size = _key.len() + _value.len();
+        let new_size = current_size + key_value_size;
+        self.approximate_size
+            .store(new_size, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
