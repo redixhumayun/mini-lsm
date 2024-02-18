@@ -2,9 +2,10 @@
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 use std::cmp::{self};
+use std::collections::binary_heap::PeekMut;
 use std::collections::BinaryHeap;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 
 use crate::key::KeySlice;
 
@@ -47,7 +48,26 @@ pub struct MergeIterator<I: StorageIterator> {
 
 impl<I: StorageIterator> MergeIterator<I> {
     pub fn create(iters: Vec<Box<I>>) -> Self {
-        unimplemented!()
+        if iters.len() == 0 {
+            return MergeIterator {
+                iters: BinaryHeap::new(),
+                current: None,
+            };
+        }
+
+        let mut heap: BinaryHeap<HeapWrapper<I>> = BinaryHeap::new();
+
+        for (index, iter) in iters.into_iter().enumerate() {
+            if iter.is_valid() {
+                let heap_wrapper = HeapWrapper(index, iter);
+                heap.push(heap_wrapper);
+            }
+        }
+        let current = heap.pop().unwrap();
+        MergeIterator {
+            iters: heap,
+            current: Some(current),
+        }
     }
 }
 
@@ -57,18 +77,58 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     type KeyType<'a> = KeySlice<'a>;
 
     fn key(&self) -> KeySlice {
-        unimplemented!()
+        self.current.as_ref().unwrap().1.key()
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        self.current.as_ref().unwrap().1.value()
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        self.current
+            .as_ref()
+            .map(|heap_wrapper| heap_wrapper.1.is_valid())
+            .unwrap_or(false)
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        let current = self.current.as_mut().unwrap();
+
+        //  Check if there are any keys that are identical - advance the lower ranked iterators in that case
+        while let Some(mut heap_wrapper) = self.iters.peek_mut() {
+            if heap_wrapper.1.key() == current.1.key() {
+                //  The current and the heap top have the same key. Ignore the heap top key because we organised by reverse
+                //  chronological order when building the heap. The value in current should be what's upheld. Advance the top
+                if let Err(e) = heap_wrapper.1.next() {
+                    PeekMut::pop(heap_wrapper);
+                    return Err(e);
+                }
+
+                if !heap_wrapper.1.is_valid() {
+                    PeekMut::pop(heap_wrapper);
+                }
+            } else {
+                break;
+            }
+        }
+
+        //  advance the current iterator
+        current.1.next()?;
+
+        //  check if the current iterator continue to be valid - if not, replace with the top
+        if !current.1.is_valid() {
+            if let Some(heap_wrapper) = self.iters.pop() {
+                self.current = Some(heap_wrapper);
+            }
+            return Ok(());
+        }
+
+        //  check if the current iterator should be replaced by the top value in the heap
+        if let Some(mut heap_wrapper) = self.iters.peek_mut() {
+            if current < &mut heap_wrapper {
+                std::mem::swap(current, &mut *heap_wrapper);
+            }
+        }
+        Ok(())
     }
 }

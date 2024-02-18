@@ -84,6 +84,28 @@ fn test_task1_empty_memtable_iter() {
 }
 
 #[test]
+fn test_task2_simple() {
+    let i1 = MockIterator::new(vec![(Bytes::from("a"), Bytes::from("1.0"))]);
+    let i2 = MockIterator::new(vec![(Bytes::from("b"), Bytes::from("2.0"))]);
+    let i3 = MockIterator::new(vec![(Bytes::from("c"), Bytes::from("3.0"))]);
+
+    let mut iter = MergeIterator::create(vec![
+        Box::new(i1.clone()),
+        Box::new(i2.clone()),
+        Box::new(i3.clone()),
+    ]);
+
+    check_iter_result_by_key(
+        &mut iter,
+        vec![
+            (Bytes::from("a"), Bytes::from("1.0")),
+            (Bytes::from("b"), Bytes::from("2.0")),
+            (Bytes::from("c"), Bytes::from("3.0")),
+        ],
+    );
+}
+
+#[test]
 fn test_task2_merge_1() {
     let i1 = MockIterator::new(vec![
         (Bytes::from("a"), Bytes::from("1.1")),
@@ -119,8 +141,8 @@ fn test_task2_merge_1() {
             (Bytes::from("e"), Bytes::new()),
         ],
     );
-
-    let mut iter = MergeIterator::create(vec![Box::new(i3), Box::new(i1), Box::new(i2)]);
+    let mut iter: MergeIterator<MockIterator> =
+        MergeIterator::create(vec![Box::new(i3), Box::new(i1), Box::new(i2)]);
 
     check_iter_result_by_key(
         &mut iter,

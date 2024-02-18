@@ -15,7 +15,8 @@ use crate::compact::{
     CompactionController, CompactionOptions, LeveledCompactionController, LeveledCompactionOptions,
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, TieredCompactionController,
 };
-use crate::lsm_iterator::{FusedIterator, LsmIterator};
+use crate::iterators::merge_iterator::MergeIterator;
+use crate::lsm_iterator::{self, FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::MemTable;
 use crate::mvcc::LsmMvccInner;
@@ -118,20 +119,6 @@ pub enum CompactionFilter {
     Prefix(Bytes),
 }
 
-/// The storage interface of the LSM tree.
-pub(crate) struct LsmStorageInner {
-    pub(crate) state: Arc<RwLock<Arc<LsmStorageState>>>,
-    pub(crate) state_lock: Mutex<()>,
-    path: PathBuf,
-    pub(crate) block_cache: Arc<BlockCache>,
-    next_sst_id: AtomicUsize,
-    pub(crate) options: Arc<LsmStorageOptions>,
-    pub(crate) compaction_controller: CompactionController,
-    pub(crate) manifest: Option<Manifest>,
-    pub(crate) mvcc: Option<LsmMvccInner>,
-    pub(crate) compaction_filters: Arc<Mutex<Vec<CompactionFilter>>>,
-}
-
 /// A thin wrapper for `LsmStorageInner` and the user interface for MiniLSM.
 pub struct MiniLsm {
     pub(crate) inner: Arc<LsmStorageInner>,
@@ -225,6 +212,20 @@ impl MiniLsm {
     pub fn force_full_compaction(&self) -> Result<()> {
         self.inner.force_full_compaction()
     }
+}
+
+/// The storage interface of the LSM tree.
+pub(crate) struct LsmStorageInner {
+    pub(crate) state: Arc<RwLock<Arc<LsmStorageState>>>,
+    pub(crate) state_lock: Mutex<()>,
+    path: PathBuf,
+    pub(crate) block_cache: Arc<BlockCache>,
+    next_sst_id: AtomicUsize,
+    pub(crate) options: Arc<LsmStorageOptions>,
+    pub(crate) compaction_controller: CompactionController,
+    pub(crate) manifest: Option<Manifest>,
+    pub(crate) mvcc: Option<LsmMvccInner>,
+    pub(crate) compaction_filters: Arc<Mutex<Vec<CompactionFilter>>>,
 }
 
 impl LsmStorageInner {
@@ -384,6 +385,27 @@ impl LsmStorageInner {
         _lower: Bound<&[u8]>,
         _upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
-        unimplemented!()
+        let state_guard = self.state.read();
+        let mut memtables = Vec::new();
+        memtables.push(Arc::clone(&state_guard.memtable));
+        memtables.extend(
+            state_guard
+                .imm_memtables
+                .iter()
+                .map(|memtable| Arc::clone(memtable)),
+        );
+
+        //  create a vector of individual memtable iterators for each memtable
+        let mut iterators = Vec::new();
+        for memtable in memtables {
+            //  create a memtable iterator for each memtable
+            let iterator = memtable.scan(_lower, _upper);
+            iterators.push(Box::new(iterator));
+        }
+
+        //  now create a merge iterator
+        let merge_iterator = MergeIterator::create(iterators);
+        let lsm_iterator = LsmIterator::new(merge_iterator).unwrap();
+        Ok(FusedIterator::new(lsm_iterator))
     }
 }
