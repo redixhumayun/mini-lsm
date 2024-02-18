@@ -1,3 +1,25 @@
+# Introduction
+
+This is my implementation of the mini LSM in a week tutorial. I am trying to write answers to all the discussion questions for each day's topic
+
+##  Week 1 Day 1
+
+* Why doesn't the memtable provide a delete API? **Put with empty value serves the purpose**
+
+* Is it possible to use other data structures as the memtable in LSM? What are the pros/cons of using the skiplist? Unsure
+
+* Why do we need a combination of state and state_lock? Can we only use state.read() and state.write()? For this day's implementation, using just state.read() and state.write() should work. **state.write() will wait for all reader threads to flush before acquiring the write lock on the RWLock so should serve the same purpose**
+
+* Why does the order to store and to probe the memtables matter? If a key appears in multiple memtables, which version should you return to the user? **Memtables are reverse chronological order so order matters. This is the order of the query as well.**
+
+* Is the memory layout of the memtable efficient / does it have good data locality? (Think of how Byte is implemented and stored in the skiplist...) What are the possible optimizations to make the memtable more efficient? **Skiplists inherently have poor data locality because of their structure. You have nodes being allocated and links being set up between them dynamically. Using an arena allocator can minimise this slightly, however cannot eliminate it. Byte is a smart pointer so layer of indirection involved here.**
+
+* So we are using parking_lot locks in this tutorial. Is its read-write lock a fair lock? What might happen to the readers trying to acquire the lock if there is one writer waiting for existing readers to stop? **read-write lock is not fair by default but API is provided to make it far. In a fair lock, its FIFO via queue. Otherwise depends on implementation, preference might be given to thread that just released a lock to re-acquire it** 
+
+* After freezing the memtable, is it possible that some threads still hold the old LSM state and wrote into these immutable memtables? How does your solution prevent it from happening? **Writing into immutable memtables is not possible because the write() lock is acquired before memtable is made immutable**
+
+* There are several places that you might first acquire a read lock on state, then drop it and acquire a write lock (these two operations might be in different functions but they happened sequentially due to one function calls the other). How does it differ from directly upgrading the read lock to a write lock? Is it necessary to upgrade instead of acquiring and dropping and what is the cost of doing the upgrade? **Dropping and upgrading the lock requires re-checking the state because underlying structure might have changed. Unsure of how to do the upgrade.**
+
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
 # LSM in a Week
