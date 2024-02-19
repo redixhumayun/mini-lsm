@@ -15,7 +15,7 @@ pub struct BlockIterator {
     /// Current index of the key-value pair, should be in range of [0, num_of_elements)
     idx: usize,
     /// The first key in the block
-    first_key: KeyVec,
+    _first_key: KeyVec,
 }
 
 impl BlockIterator {
@@ -25,7 +25,7 @@ impl BlockIterator {
             key: KeyVec::new(),
             value_range: (0, 0),
             idx: 0,
-            first_key: KeyVec::new(),
+            _first_key: KeyVec::new(),
         }
     }
 
@@ -83,7 +83,7 @@ impl BlockIterator {
         let (value_length_raw, rest) = rest.split_at(2);
         let value_length = u16::from_le_bytes(value_length_raw.try_into().unwrap());
 
-        let (value, _) = rest.split_at(value_length as usize);
+        let (_, _) = rest.split_at(value_length as usize);
         let new_value_start = offset + 2 + key_length as usize;
         self.value_range = (
             new_value_start + 2,
