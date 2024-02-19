@@ -187,6 +187,49 @@ fn test_block_iterator() {
 }
 
 #[test]
+fn test_block_seek_key_simple() {
+    let block = Arc::new(generate_block());
+    let mut iter = BlockIterator::create_and_seek_to_key(block, key_of(0).as_key_slice());
+    let key = iter.key();
+    let value = iter.value();
+    assert_eq!(
+        key.for_testing_key_ref(),
+        key_of(0).for_testing_key_ref(),
+        "expected key: {:?}, actual key: {:?}",
+        as_bytes(key_of(0).for_testing_key_ref()),
+        as_bytes(key.for_testing_key_ref())
+    );
+    assert_eq!(
+        value,
+        value_of(0),
+        "expected value: {:?}, actual value: {:?}",
+        as_bytes(&value_of(0)),
+        as_bytes(value)
+    );
+
+    iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(b"k"));
+    iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(
+        &format!("key_010").into_bytes(),
+    ));
+    let key = iter.key();
+    let value = iter.value();
+    assert_eq!(
+        key.for_testing_key_ref(),
+        key_of(2).for_testing_key_ref(),
+        "expected key: {:?}, actual key: {:?}",
+        as_bytes(key_of(2).for_testing_key_ref()),
+        as_bytes(key.for_testing_key_ref())
+    );
+    assert_eq!(
+        value,
+        value_of(2),
+        "expected value: {:?}, actual value: {:?}",
+        as_bytes(&value_of(2)),
+        as_bytes(value)
+    );
+}
+
+#[test]
 fn test_block_seek_key() {
     let block = Arc::new(generate_block());
     let mut iter = BlockIterator::create_and_seek_to_key(block, key_of(0).as_key_slice());
@@ -212,6 +255,6 @@ fn test_block_seek_key() {
                 &format!("key_{:03}", i * 5 + offset).into_bytes(),
             ));
         }
-        iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(b"k"));
+        iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(b"k")); //  this seems to be used to reset the iterator to 0 because no key with k exists
     }
 }

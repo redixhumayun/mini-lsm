@@ -1,6 +1,3 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 use std::sync::Arc;
 
 use crate::key::{KeySlice, KeyVec};
@@ -74,8 +71,8 @@ impl BlockIterator {
     }
 
     fn seek_to(&mut self, index: usize) {
-        let start_next_kv = self.value_range.1;
-        let data_to_consider = &self.block.data[start_next_kv..];
+        let offset = self.block.offsets[index] as usize;
+        let data_to_consider = &self.block.data[offset..];
 
         let (key_length_raw, rest) = data_to_consider.split_at(2);
         let key_length = u16::from_le_bytes(key_length_raw.try_into().unwrap());
@@ -87,7 +84,7 @@ impl BlockIterator {
         let value_length = u16::from_le_bytes(value_length_raw.try_into().unwrap());
 
         let (value, _) = rest.split_at(value_length as usize);
-        let new_value_start = start_next_kv + 2 + key_length as usize;
+        let new_value_start = offset + 2 + key_length as usize;
         self.value_range = (
             new_value_start + 2,
             new_value_start + 2 + value_length as usize,
@@ -107,16 +104,6 @@ impl BlockIterator {
         self.seek_to(self.idx);
     }
 
-    fn get_key_at_index(&mut self, index: usize) -> KeySlice {
-        self.seek_to(index);
-        self.idx = index;
-        self.key.as_key_slice()
-    }
-
-    fn update_iterator_to_current_index(&mut self) {
-        self.seek_to(self.idx);
-    }
-
     /// Seek to the first key that >= `key`.
     /// Note: You should assume the key-value pairs in the block are sorted when being added by
     /// callers.
@@ -126,15 +113,28 @@ impl BlockIterator {
 
         while low <= high {
             let mid = low + (high - low) / 2;
-            let mid_key = self.get_key_at_index(mid);
+            self.seek_to(mid);
+            self.idx = mid;
+            let mid_key = self.key.as_key_slice();
 
             match mid_key.cmp(&key) {
                 std::cmp::Ordering::Less => low = mid + 1,
-                std::cmp::Ordering::Greater => high = mid - 1,
-                std::cmp::Ordering::Equal => break,
+                std::cmp::Ordering::Greater => {
+                    if mid == 0 {
+                        break;
+                    }
+                    high = mid - 1;
+                }
+                std::cmp::Ordering::Equal => return,
             }
         }
+
+        if low >= self.block.offsets.len() {
+            self.key.clear();
+            self.value_range = (0, 0);
+            return;
+        }
         self.idx = low;
-        self.update_iterator_to_current_index();
+        self.seek_to(self.idx);
     }
 }
