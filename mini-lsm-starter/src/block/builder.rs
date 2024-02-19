@@ -1,7 +1,7 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use crate::key::{KeySlice, KeyVec};
+use crate::key::{Key, KeySlice, KeyVec};
 
 use super::Block;
 
@@ -20,13 +20,42 @@ pub struct BlockBuilder {
 impl BlockBuilder {
     /// Creates a new block builder.
     pub fn new(block_size: usize) -> Self {
-        unimplemented!()
+        BlockBuilder {
+            offsets: Vec::new(),
+            data: Vec::new(),
+            block_size,
+            first_key: Key::new(),
+        }
     }
 
     /// Adds a key-value pair to the block. Returns false when the block is full.
     #[must_use]
     pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
-        unimplemented!()
+        let key_length = key.len();
+        let key_length_bytes = (key_length as u16).to_le_bytes();
+        let value_length = value.len();
+        let value_length_bytes = (value_length as u16).to_le_bytes();
+        let size_required = 2 + key_length + 2 + value_length + 2;
+
+        if self.data.len() + self.offsets.len() + size_required > self.block_size
+            && self.first_key.raw_ref().len() > 0
+        {
+            return false;
+        }
+
+        self.offsets.push(self.data.len() as u16);
+
+        self.data.extend_from_slice(&key_length_bytes);
+        self.data.extend_from_slice(key.into_inner());
+        self.data.extend_from_slice(&value_length_bytes);
+        self.data.extend_from_slice(value);
+
+        if self.first_key.raw_ref().len() == 0 {
+            let mut new_key = Key::new();
+            new_key.set_from_slice(key);
+            self.first_key = new_key;
+        }
+        true
     }
 
     /// Check if there is no key-value pair in the block.
@@ -36,6 +65,9 @@ impl BlockBuilder {
 
     /// Finalize the block.
     pub fn build(self) -> Block {
-        unimplemented!()
+        Block {
+            data: self.data,
+            offsets: self.offsets,
+        }
     }
 }
