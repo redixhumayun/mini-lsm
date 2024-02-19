@@ -109,6 +109,56 @@ fn as_bytes(x: &[u8]) -> Bytes {
 }
 
 #[test]
+fn test_block_iterator_simple_1_value() {
+    let block = Arc::new(generate_block());
+    let iter = BlockIterator::create_and_seek_to_first(block);
+
+    let key = iter.key();
+    let value = iter.value();
+    assert_eq!(
+        key.for_testing_key_ref(),
+        key_of(0).for_testing_key_ref(),
+        "expected key: {:?}, actual key: {:?}",
+        as_bytes(key_of(0).for_testing_key_ref()),
+        as_bytes(key.for_testing_key_ref())
+    );
+    assert_eq!(
+        value,
+        value_of(0),
+        "expected value: {:?}, actual value: {:?}",
+        as_bytes(&value_of(0)),
+        as_bytes(value)
+    );
+}
+
+#[test]
+fn test_block_iterator_simple() {
+    let block = Arc::new(generate_block());
+    let mut iter = BlockIterator::create_and_seek_to_first(block);
+
+    for i in 0..num_of_keys() {
+        let key = iter.key();
+        let value = iter.value();
+        assert_eq!(
+            key.for_testing_key_ref(),
+            key_of(i).for_testing_key_ref(),
+            "expected key: {:?}, actual key: {:?}",
+            as_bytes(key_of(i).for_testing_key_ref()),
+            as_bytes(key.for_testing_key_ref())
+        );
+        assert_eq!(
+            value,
+            value_of(i),
+            "expected value: {:?}, actual value: {:?}",
+            as_bytes(&value_of(i)),
+            as_bytes(value)
+        );
+        iter.next();
+    }
+    iter.seek_to_first();
+}
+
+#[test]
 fn test_block_iterator() {
     let block = Arc::new(generate_block());
     let mut iter = BlockIterator::create_and_seek_to_first(block);
