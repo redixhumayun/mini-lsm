@@ -20,6 +20,44 @@ This is my implementation of the mini LSM in a week tutorial. I am trying to wri
 
 * There are several places that you might first acquire a read lock on state, then drop it and acquire a write lock (these two operations might be in different functions but they happened sequentially due to one function calls the other). How does it differ from directly upgrading the read lock to a write lock? Is it necessary to upgrade instead of acquiring and dropping and what is the cost of doing the upgrade? **Dropping and upgrading the lock requires re-checking the state because underlying structure might have changed. Unsure of how to do the upgrade.**
 
+##  Week 1 Day 2
+
+* What is the time/space complexity of using your merge iterator?
+O(n * log(n)) to construct the priority queue for n memtable. O(m * log(n)) to consume the queue assuming m elements per memtable and n memtables. 
+The second part is because each call to `next()` consumes the merge iterator and it must do so for each of the m elements in each of the n memtables. 
+What would the worst case theoretical complexity be? It would be O(m * n * log (n)) because the `next()` function for the merge iterator will try to compare each element against each iterator in the queue because each iterator contains a duplicate of the element.
+
+* Why do we need a self-referential structure for memtable iterator?
+Unsure
+
+* If a key is removed (there is a delete tombstone), do you need to return it to the user? Where did you handle this logic?
+No, this is handled in the `skip_deleted_values()` of the `lsm_iterator` where the deleted tombstones are skipped.
+
+* If a key has multiple versions, will the user see all of them? Where did you handle this logic?
+No, the user will see the latest version. This is handled in the `next()` function of the `merge_iterator`.
+
+* If we want to get rid of self-referential structure and have a lifetime on the memtable iterator (i.e., MemtableIterator<'a>, where 'a = memtable or LsmStorageInner lifetime), is it still possible to implement the scan functionality?
+Unsure
+
+* What happens if (1) we create an iterator on the skiplist memtable (2) someone inserts new keys into the memtable (3) will the iterator see the new key?
+Depends if they inserted it before the call to `SkipMapRangeIter` in `mem_table.rs` to construct the range iterator for a memtable. Presumably crossbeam takes a snapshot of the skiplist at this point so no new values will appear after.
+
+* What happens if your key comparator cannot give the binary heap implementation a stable order?
+Unsure what stable order means here.
+
+* Why do we need to ensure the merge iterator returns data in the iterator construction order?
+To get the latest version of a value first.
+
+* Is it possible to implement a Rust-style iterator (i.e., next(&self) -> (Key, Value)) for LSM iterators? What are the pros/cons?
+Unsure.
+
+* The scan interface is like fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>). How to make this API compatible with Rust-style range (i.e., key_a..key_b)? If you implement this, try to pass a full range .. to the interface and see what will happen.
+Unsure.
+
+* The starter code provides the merge iterator interface to store Box<I> instead of I. What might be the reason behind that?
+Probably has something to do with dynamic dispatch? Also, i don't believe Rust would allow storing a vector of type `I` where `I` is a trait since the size of the object is unknown at compile time. `Box<I>` would allocate memory on the heap so size doesn't need to be known at compile time.
+
+
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
 # LSM in a Week

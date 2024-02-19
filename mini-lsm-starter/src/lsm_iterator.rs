@@ -28,6 +28,9 @@ impl LsmIterator {
         Ok(lsm_iter)
     }
 
+    //  if the value associated with the key after calling next is an empty string
+    //  this marks a tombstone. this key should be skipped so that the consumer
+    //  of this iterator does not see it
     fn skip_deleted_values(&mut self) -> Result<()> {
         while self.inner.value().is_empty() && self.inner.is_valid() {
             self.inner.next()?;
@@ -52,10 +55,6 @@ impl StorageIterator for LsmIterator {
     }
 
     fn next(&mut self) -> Result<()> {
-        //  if the value associated with the key after calling next is an empty string
-        //  this marks a tombstone. this key should be skipped so that the consumer
-        //  of this iterator does not see it
-
         self.inner.next()?;
         self.skip_deleted_values()?;
         Ok(())
