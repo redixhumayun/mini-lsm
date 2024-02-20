@@ -57,6 +57,34 @@ Unsure.
 * The starter code provides the merge iterator interface to store Box<I> instead of I. What might be the reason behind that?
 Probably has something to do with dynamic dispatch? Also, i don't believe Rust would allow storing a vector of type `I` where `I` is a trait since the size of the object is unknown at compile time. `Box<I>` would allocate memory on the heap so size doesn't need to be known at compile time.
 
+##  Week 1 Day 3
+* What is the time complexity of seeking a key in the block? 
+Should be O(log(n)) because binary search
+
+* Where does the cursor stop when you seek a non-existent key in your implementation? 
+The cursor stops at 0
+
+* So Block is simply a vector of raw data and a vector of offsets. Can we change them to Byte and Arc<[u16]>, and change all the iterator interfaces to return Byte instead of &[u8]? (Assume that we use Byte::slice to return a slice of the block without copying.) What are the pros/cons?
+The only thing I've been able to think of for this is that a slice requires the underlying object to be maintained in memory manually but with Arc and Byte, that will be handled a little more easily. Also, Arc and Byte are thread-safe. 
+
+* What is the endian of the numbers written into the blocks in your implementation?
+Little endian. No reason just picked one.
+
+* Is your implementation prune to a maliciously-built block? Will there be invalid memory access, or OOMs, if a user deliberately construct an invalid block?
+How can a user construct an invalid block? 
+
+* Can a block contain duplicated keys?
+Yes, there is no safe-guard against that currently. The user is free to add whatever keys they like.
+
+* What happens if the user adds a key larger than the target block size?
+The current implementation stores the key value pair within the block anyway. This will probably lead to page fragmentation on disk.
+
+* Consider the case that the LSM engine is built on object store services (S3). How would you optimize/change the block format and parameters to make it suitable for such services?
+This is an interesting question. If my blocks were to live on S3 perhaps the most important thing is reducing the number of network round trips to optimise cost which would presumably imply increasing the size of a block. Perhaps pushing some of the computation of the range scanning into S3 itself? Compress the block storage. Keep a cache on the compute node with "hot" blocks? 
+
+
+* Do you love bubble tea? Why or why not?
+Lol love it
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
