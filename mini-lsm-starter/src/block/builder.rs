@@ -57,7 +57,7 @@ impl BlockBuilder {
 
     /// Check if there is no key-value pair in the block.
     pub fn is_empty(&self) -> bool {
-        unimplemented!()
+        self.offsets.is_empty()
     }
 
     /// Finalize the block.
