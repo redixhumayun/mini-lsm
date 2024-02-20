@@ -44,14 +44,18 @@ impl SsTableBuilder {
         if self.first_key.is_empty() {
             self.first_key = key.to_key_vec().raw_ref().to_vec();
         }
-        if !self.builder.add(key, value) {
-            self.freeze_block();
 
-            //  add key, value pair to new block
-            assert!(self.builder.add(key, value)); //  this should not fail now since its a new block
-            self.first_key = key.to_key_vec().raw_ref().to_vec();
+        println!("Adding key-value pair to block");
+        if self.builder.add(key, value) {
+            self.last_key = key.to_key_vec().raw_ref().to_vec();
+            return;
         }
 
+        println!("Adding key-value pair exceeded block limits. Freezing current block and creating new block");
+        self.freeze_block();
+
+        assert!(self.builder.add(key, value));
+        self.first_key = key.to_key_vec().raw_ref().to_vec();
         self.last_key = key.to_key_vec().raw_ref().to_vec();
     }
 
@@ -69,6 +73,10 @@ impl SsTableBuilder {
             first_key: Key::from_vec(self.first_key.clone()).into_key_bytes(),
             last_key: Key::from_vec(self.last_key.clone()).into_key_bytes(),
         };
+        println!(
+            "The offset for the data block within the SSTable: {}",
+            block_meta.offset
+        );
 
         self.data.extend_from_slice(&encoded_block);
         self.meta.push(block_meta);
@@ -89,10 +97,13 @@ impl SsTableBuilder {
         block_cache: Option<Arc<BlockCache>>,
         path: impl AsRef<Path>,
     ) -> Result<SsTable> {
+        println!("ENTER: SSTable build");
         self.freeze_block();
         let mut encoded_sst: Vec<u8> = Vec::new();
 
         encoded_sst.extend_from_slice(&self.data);
+
+        println!("The metadata for the SSTable block: {:?}", self.meta);
 
         //  encode meta section for each block
         let mut encoded_meta: Vec<u8> = Vec::new();
@@ -105,6 +116,7 @@ impl SsTableBuilder {
 
         //  write the entire encoding to disk
         let file = FileObject::create(path.as_ref(), encoded_sst)?;
+        println!("EXIT: SSTable build");
         Ok(SsTable {
             file,
             block_meta_offset: self.data.len(),

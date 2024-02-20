@@ -40,6 +40,7 @@ impl BlockBuilder {
             return false;
         }
 
+        println!("Offset for this key-value pair is {}", self.data.len());
         self.offsets.push(self.data.len() as u16);
 
         self.data.extend_from_slice(&key_length_bytes);
@@ -66,5 +67,9 @@ impl BlockBuilder {
             data: self.data,
             offsets: self.offsets,
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.offsets.len()
     }
 }

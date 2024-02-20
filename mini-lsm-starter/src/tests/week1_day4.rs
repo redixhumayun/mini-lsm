@@ -37,8 +37,27 @@ fn value_of(idx: usize) -> Vec<u8> {
     format!("value_{:010}", idx).into_bytes()
 }
 
+fn num_of_keys_small() -> usize {
+    6
+}
+
 fn num_of_keys() -> usize {
     100
+}
+
+fn generate_sst_small() -> (TempDir, SsTable) {
+    let mut builder = SsTableBuilder::new(128);
+    for idx in 0..num_of_keys_small() {
+        println!("********");
+        println!("Adding key {}", format!("key_{:03}", idx * 5));
+        let key = key_of(idx);
+        let value = value_of(idx);
+        builder.add(key.as_key_slice(), &value[..]);
+        println!("Done adding key {}", format!("key_{:03}", idx * 5));
+    }
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("1.sst");
+    (dir, builder.build_for_test(path).unwrap())
 }
 
 fn generate_sst() -> (TempDir, SsTable) {
@@ -80,31 +99,31 @@ fn as_bytes(x: &[u8]) -> Bytes {
 
 #[test]
 fn test_sst_iterator_simple() {
-    let (_dir, sst) = generate_sst();
+    let (_dir, sst) = generate_sst_small();
     let sst = Arc::new(sst);
+    println!("START READING");
     let mut iter = SsTableIterator::create_and_seek_to_first(sst).unwrap();
-    // for _ in 0..5 {
-    //     for i in 0..num_of_keys() {
-    //         let key = iter.key();
-    //         let value = iter.value();
-    //         assert_eq!(
-    //             key.for_testing_key_ref(),
-    //             key_of(i).for_testing_key_ref(),
-    //             "expected key: {:?}, actual key: {:?}",
-    //             as_bytes(key_of(i).for_testing_key_ref()),
-    //             as_bytes(key.for_testing_key_ref())
-    //         );
-    //         assert_eq!(
-    //             value,
-    //             value_of(i),
-    //             "expected value: {:?}, actual value: {:?}",
-    //             as_bytes(&value_of(i)),
-    //             as_bytes(value)
-    //         );
-    //         iter.next().unwrap();
-    //     }
-    //     iter.seek_to_first().unwrap();
-    // }
+    for i in 0..num_of_keys_small() {
+        println!("Reading key {}", format!("key_{:03}", i * 5));
+        let key = iter.key();
+        let value = iter.value();
+        assert_eq!(
+            key.for_testing_key_ref(),
+            key_of(i).for_testing_key_ref(),
+            "expected key: {:?}, actual key: {:?}",
+            as_bytes(key_of(i).for_testing_key_ref()),
+            as_bytes(key.for_testing_key_ref())
+        );
+        assert_eq!(
+            value,
+            value_of(i),
+            "expected value: {:?}, actual value: {:?}",
+            as_bytes(&value_of(i)),
+            as_bytes(value)
+        );
+        println!("Done reading key {}", format!("key_{:03}", i * 5));
+        iter.next().unwrap();
+    }
 }
 
 #[test]
@@ -133,6 +152,56 @@ fn test_sst_iterator() {
             iter.next().unwrap();
         }
         iter.seek_to_first().unwrap();
+    }
+}
+
+#[test]
+fn test_sst_seek_key_more_simple() {
+    let (_dir, sst) = generate_sst_small();
+    let sst = Arc::new(sst);
+    let mut iter = SsTableIterator::create_and_seek_to_key(sst, key_of(0).as_key_slice()).unwrap();
+    println!("Looking for key key_016");
+    iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(
+        &format!("key_016").into_bytes(),
+    ))
+    .unwrap();
+}
+
+#[test]
+fn test_sst_seek_key_simple() {
+    let (_dir, sst) = generate_sst_small();
+    let sst = Arc::new(sst);
+    println!("*******START READING*********");
+    let mut iter = SsTableIterator::create_and_seek_to_key(sst, key_of(0).as_key_slice()).unwrap();
+    println!("*******START ITERATION*******");
+    for offset in 1..=5 {
+        for i in 0..num_of_keys_small() {
+            println!("Reading key {}", format!("key_{:03}", i * 5));
+            let key = iter.key();
+            let value = iter.value();
+            assert_eq!(
+                key.for_testing_key_ref(),
+                key_of(i).for_testing_key_ref(),
+                "expected key: {:?}, actual key: {:?}",
+                as_bytes(key_of(i).for_testing_key_ref()),
+                as_bytes(key.for_testing_key_ref())
+            );
+            assert_eq!(
+                value,
+                value_of(i),
+                "expected value: {:?}, actual value: {:?}",
+                as_bytes(&value_of(i)),
+                as_bytes(value)
+            );
+            println!("Done reading key {}", format!("key_{:03}", i * 5));
+            println!("Seeking to key {}", format!("key_{:03}", i * 5 + offset));
+            iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(
+                &format!("key_{:03}", i * 5 + offset).into_bytes(),
+            ))
+            .unwrap();
+        }
+        iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(b"k"))
+            .unwrap();
     }
 }
 
