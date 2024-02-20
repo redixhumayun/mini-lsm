@@ -79,6 +79,35 @@ fn as_bytes(x: &[u8]) -> Bytes {
 }
 
 #[test]
+fn test_sst_iterator_simple() {
+    let (_dir, sst) = generate_sst();
+    let sst = Arc::new(sst);
+    let mut iter = SsTableIterator::create_and_seek_to_first(sst).unwrap();
+    // for _ in 0..5 {
+    //     for i in 0..num_of_keys() {
+    //         let key = iter.key();
+    //         let value = iter.value();
+    //         assert_eq!(
+    //             key.for_testing_key_ref(),
+    //             key_of(i).for_testing_key_ref(),
+    //             "expected key: {:?}, actual key: {:?}",
+    //             as_bytes(key_of(i).for_testing_key_ref()),
+    //             as_bytes(key.for_testing_key_ref())
+    //         );
+    //         assert_eq!(
+    //             value,
+    //             value_of(i),
+    //             "expected value: {:?}, actual value: {:?}",
+    //             as_bytes(&value_of(i)),
+    //             as_bytes(value)
+    //         );
+    //         iter.next().unwrap();
+    //     }
+    //     iter.seek_to_first().unwrap();
+    // }
+}
+
+#[test]
 fn test_sst_iterator() {
     let (_dir, sst) = generate_sst();
     let sst = Arc::new(sst);

@@ -62,7 +62,6 @@ impl SsTableBuilder {
         let builder = std::mem::replace(&mut self.builder, BlockBuilder::new(self.block_size));
         let block = builder.build();
         let encoded_block = Block::encode(&block);
-        self.data.extend_from_slice(&encoded_block);
 
         //  get metadata for split block
         let block_meta = BlockMeta {
@@ -70,6 +69,8 @@ impl SsTableBuilder {
             first_key: Key::from_vec(self.first_key.clone()).into_key_bytes(),
             last_key: Key::from_vec(self.last_key.clone()).into_key_bytes(),
         };
+
+        self.data.extend_from_slice(&encoded_block);
         self.meta.push(block_meta);
     }
 
