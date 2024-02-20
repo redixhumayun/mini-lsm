@@ -16,7 +16,7 @@ impl SsTableIterator {
     /// Create a new iterator and seek to the first key-value pair in the first data block.
     pub fn create_and_seek_to_first(table: Arc<SsTable>) -> Result<Self> {
         //  get the first block from the sstable and build an iterator on top of it
-        let block = table.read_block(0)?;
+        let block = table.read_block_cached(0)?;
         let block_iterator = BlockIterator::create_and_seek_to_first(block);
         let iter = SsTableIterator {
             table,
@@ -29,7 +29,7 @@ impl SsTableIterator {
     /// Seek to the first key-value pair in the first data block.
     pub fn seek_to_first(&mut self) -> Result<()> {
         //  get metata for first block index
-        let block = self.table.read_block(0)?;
+        let block = self.table.read_block_cached(0)?;
         let block_iterator = BlockIterator::create_and_seek_to_first(block);
         self.blk_idx = 0;
         self.blk_iter = block_iterator;
@@ -40,13 +40,13 @@ impl SsTableIterator {
         println!("ENTER: SSTable seek_to");
         let mut block_index = table.find_block_idx(key);
         println!("Found the key in block {}", block_index);
-        let block = table.read_block(block_index).unwrap();
+        let block = table.read_block_cached(block_index).unwrap();
         let mut block_iter = BlockIterator::create_and_seek_to_key(block, key);
         if !block_iter.is_valid() {
             block_index += 1;
             if block_index < table.num_of_blocks() {
                 block_iter =
-                    BlockIterator::create_and_seek_to_first(table.read_block(block_index)?);
+                    BlockIterator::create_and_seek_to_first(table.read_block_cached(block_index)?);
             }
         }
         println!("EXIT: SSTable seek_to");
@@ -103,7 +103,7 @@ impl StorageIterator for SsTableIterator {
                 self.blk_idx += 1;
                 if self.blk_idx < self.table.num_of_blocks() {
                     println!("Moving to the next data block in the SSTable");
-                    let new_block = self.table.read_block(self.blk_idx)?;
+                    let new_block = self.table.read_block_cached(self.blk_idx)?;
                     let new_block_iter = BlockIterator::create_and_seek_to_first(new_block);
                     self.blk_iter = new_block_iter;
                 }
