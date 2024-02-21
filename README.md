@@ -86,6 +86,33 @@ This is an interesting question. If my blocks were to live on S3 perhaps the mos
 * Do you love bubble tea? Why or why not?
 Lol love it
 
+##  Week 1 Day 4
+
+* What is the time complexity of seeking a key in the SST?
+Binary search so should be O(log(n*m)) where n is the number of individual blocks in one SST table and m is the number of entries within that block that need to be binary searched over.
+
+* Where does the cursor stop when you seek a non-existent key in your implementation?
+When looking for a key 3 in the blocks with key ranges (1, 2) and (4, 5) it will stop at block 2.
+
+* Is it possible (or necessary) to do in-place updates of SST files?
+SST files are supposed to be immutable so I don't think this would be correct.
+
+* An SST is usually large (i.e., 256MB). In this case, the cost of copying/expanding the Vec would be significant. Does your implementation allocate enough space for your SST builder in advance? How did you implement it?
+I don't think I preallocated any space for the vector. I just used `Vec::new()` and let dynamic allocation do the job for me.
+
+* Looking at the moka block cache, why does it return Arc<Error> instead of the original Error?
+Is this because moka is a concurrent cache so it might potentially need to return an error from a separate thread?
+
+* Does the usage of a block cache guarantee that there will be at most a fixed number of blocks in memory? For example, if you have a moka block cache of 4GB and block size of 4KB, will there be more than 4GB/4KB number of blocks in memory at the same time?
+There cannot be because the cache limits the number of blocks that can be stored and each block is of an equal size. Of course the last block in an SSTable might be smaller than the maximum allowable limit so in that case the cache would hold more blocks potentially.
+
+* Is it possible to store columnar data (i.e., a table of 100 integer columns) in an LSM engine? Is the current SST format still a good choice?
+Yes, columnar data can be stored. The current format might still work assuming that each column is stored in a separate SSTable. The key could be the primary key and the value would be the columnar value required there.
+
+* Consider the case that the LSM engine is built on object store services (i.e., S3). How would you optimize/change the SST format/parameters and the block cache to make it suitable for such services?
+Obvious answer - compress the SSTable for storage and increase the size of the SSTable file. Presumably the cache would be placed on the compute node to ensure that network requests are limited.
+
+
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
 # LSM in a Week

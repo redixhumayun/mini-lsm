@@ -1,6 +1,3 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 use anyhow::Result;
 
 use super::StorageIterator;
@@ -11,6 +8,7 @@ pub struct TwoMergeIterator<A: StorageIterator, B: StorageIterator> {
     a: A,
     b: B,
     // Add fields as need
+    use_iterator: u8, // this can be 0 (use a), 1 (use b), 2 (use c)
 }
 
 impl<
@@ -19,7 +17,27 @@ impl<
     > TwoMergeIterator<A, B>
 {
     pub fn create(a: A, b: B) -> Result<Self> {
-        unimplemented!()
+        let use_iterator = TwoMergeIterator::decide_which_iter_to_use(&a, &b);
+        Ok(TwoMergeIterator { a, b, use_iterator })
+    }
+
+    fn decide_which_iter_to_use(a: &A, b: &B) -> u8 {
+        if !a.is_valid() && b.is_valid() {
+            return 1;
+        }
+        if a.is_valid() && !b.is_valid() {
+            return 0;
+        }
+        if !a.is_valid() && !b.is_valid() {
+            return u8::MAX;
+        }
+        if a.key() < b.key() {
+            0
+        } else if a.key() > b.key() {
+            1
+        } else {
+            2
+        }
     }
 }
 
@@ -31,18 +49,47 @@ impl<
     type KeyType<'a> = A::KeyType<'a>;
 
     fn key(&self) -> Self::KeyType<'_> {
-        unimplemented!()
+        if self.use_iterator == 0 || self.use_iterator == 2 {
+            return self.a.key();
+        }
+        self.b.key()
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        if self.use_iterator == 0 || self.use_iterator == 2 {
+            return self.a.value();
+        }
+        self.b.value()
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        self.a.is_valid() || self.b.is_valid()
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        if self.use_iterator == 0 {
+            //  advance the first iterator because the second one wasn't used
+
+            if self.a.is_valid() {
+                self.a.next()?;
+            }
+        } else if self.use_iterator == 1 {
+            //  advance the second iterator because the first one wasn't used
+
+            if self.b.is_valid() {
+                self.b.next()?;
+            }
+        } else if self.use_iterator == 2 {
+            //  advance both
+
+            if self.a.is_valid() {
+                self.a.next()?;
+            }
+            if self.b.is_valid() {
+                self.b.next()?;
+            }
+        }
+        self.use_iterator = TwoMergeIterator::decide_which_iter_to_use(&self.a, &self.b);
+        Ok(())
     }
 }
