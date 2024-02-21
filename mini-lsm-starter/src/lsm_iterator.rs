@@ -50,6 +50,10 @@ impl LsmIterator {
         while self.inner.is_valid() && self.inner.value().is_empty() {
             println!("Skipping deleted value for key {:?}", self.inner.key());
             self.inner.next()?;
+            if !self.inner.is_valid() {
+                self.is_valid = false;
+                return Ok(());
+            }
             match self.upper_bound.as_ref() {
                 Bound::Included(key) => {
                     if self.inner.key().raw_ref() > key {

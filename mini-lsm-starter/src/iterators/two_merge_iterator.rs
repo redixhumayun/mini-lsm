@@ -79,7 +79,9 @@ impl<
     }
 
     fn is_valid(&self) -> bool {
-        if self.use_iterator == 0 {
+        if self.use_iterator == u8::MAX {
+            false
+        } else if self.use_iterator == 0 {
             self.a.is_valid()
         } else {
             self.b.is_valid()
