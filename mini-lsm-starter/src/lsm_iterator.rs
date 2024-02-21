@@ -46,7 +46,9 @@ impl LsmIterator {
     //  this marks a tombstone. this key should be skipped so that the consumer
     //  of this iterator does not see it
     fn skip_deleted_values(&mut self) -> Result<()> {
-        while self.inner.value().is_empty() && self.inner.is_valid() {
+        println!("ENTER: lsm_iterator::skip_deleted_values()");
+        while self.inner.is_valid() && self.inner.value().is_empty() {
+            println!("Skipping deleted value for key {:?}", self.inner.key());
             self.inner.next()?;
             match self.upper_bound.as_ref() {
                 Bound::Included(key) => {
@@ -64,6 +66,7 @@ impl LsmIterator {
                 Bound::Unbounded => {}
             }
         }
+        println!("EXIT: lsm_iterator::skip_deleted_values()");
         Ok(())
     }
 }
@@ -84,7 +87,12 @@ impl StorageIterator for LsmIterator {
     }
 
     fn next(&mut self) -> Result<()> {
+        println!("ENTER: lsm_iterator::next()");
         self.inner.next()?;
+        if !self.inner.is_valid() {
+            self.is_valid = false;
+            return Ok(());
+        }
         match self.upper_bound.as_ref() {
             Bound::Included(key) => {
                 if self.inner.key().raw_ref() > key {
@@ -101,6 +109,7 @@ impl StorageIterator for LsmIterator {
             Bound::Unbounded => {}
         }
         self.skip_deleted_values()?;
+        println!("EXIT: lsm_iterator::next()");
         Ok(())
     }
 }

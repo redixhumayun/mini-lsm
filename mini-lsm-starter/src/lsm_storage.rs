@@ -18,7 +18,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::{self, KeySlice};
+use crate::key::KeySlice;
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{map_bound, MemTable};
@@ -443,6 +443,7 @@ impl LsmStorageInner {
             TwoMergeIterator::create(memtable_merge_iterator, sstable_merge_iterator)?,
             map_bound(_upper),
         )?;
+        println!("Created the lsm iterator");
 
         Ok(FusedIterator::new(lsm_iterator))
     }

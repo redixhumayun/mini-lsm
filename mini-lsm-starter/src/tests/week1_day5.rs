@@ -129,6 +129,30 @@ fn test_task1_merge_5() {
 }
 
 #[test]
+fn test_task2_storage_scan_simple() {
+    let dir = tempdir().unwrap();
+    let storage =
+        Arc::new(LsmStorageInner::open(&dir, LsmStorageOptions::default_for_week1_test()).unwrap());
+    storage.put(b"1", b"233").unwrap();
+    storage.put(b"2", b"2333").unwrap();
+    storage.put(b"00", b"2333").unwrap();
+    storage
+        .force_freeze_memtable(&storage.state_lock.lock())
+        .unwrap();
+    storage.put(b"3", b"23333").unwrap();
+    storage.delete(b"1").unwrap();
+    let mut storage_iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+    check_lsm_iter_result_by_key(
+        &mut storage_iter,
+        vec![
+            (Bytes::from("00"), Bytes::from("2333")),
+            (Bytes::from("2"), Bytes::from("2333")),
+            (Bytes::from("3"), Bytes::from("23333")),
+        ],
+    );
+}
+
+#[test]
 fn test_task2_storage_scan() {
     let dir = tempdir().unwrap();
     let storage =

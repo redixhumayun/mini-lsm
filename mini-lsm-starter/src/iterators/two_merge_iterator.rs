@@ -22,20 +22,33 @@ impl<
     }
 
     fn decide_which_iter_to_use(a: &A, b: &B) -> u8 {
+        println!("ENTER: TwoMergeIterator::decide_which_iter_to_use()");
         if !a.is_valid() && b.is_valid() {
+            println!("Using b");
+            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             return 1;
         }
         if a.is_valid() && !b.is_valid() {
+            println!("Using a");
+            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             return 0;
         }
         if !a.is_valid() && !b.is_valid() {
+            println!("Both are invalid");
+            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             return u8::MAX;
         }
         if a.key() < b.key() {
+            println!("Using a");
+            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             0
         } else if a.key() > b.key() {
+            println!("Using b");
+            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             1
         } else {
+            println!("Using both");
+            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             2
         }
     }
@@ -57,35 +70,46 @@ impl<
 
     fn value(&self) -> &[u8] {
         if self.use_iterator == 0 || self.use_iterator == 2 {
+            println!("Getting value of a");
             return self.a.value();
         }
+        println!("Getting value of b");
+        println!("Is b valid {}", self.b.is_valid());
         self.b.value()
     }
 
     fn is_valid(&self) -> bool {
-        self.a.is_valid() || self.b.is_valid()
+        if self.use_iterator == 0 {
+            self.a.is_valid()
+        } else {
+            self.b.is_valid()
+        }
     }
 
     fn next(&mut self) -> Result<()> {
+        println!("ENTER: TwoMergeIterator::next()");
+        println!("Using iterator {}", self.use_iterator);
         if self.use_iterator == 0 {
             //  advance the first iterator because the second one wasn't used
-
             if self.a.is_valid() {
+                println!("Advancing iterator a");
                 self.a.next()?;
             }
         } else if self.use_iterator == 1 {
             //  advance the second iterator because the first one wasn't used
-
             if self.b.is_valid() {
+                println!("Advancing iterator b");
                 self.b.next()?;
             }
         } else if self.use_iterator == 2 {
             //  advance both
-
+            println!("Advancing both");
             if self.a.is_valid() {
+                println!("Advancing a");
                 self.a.next()?;
             }
             if self.b.is_valid() {
+                println!("Advancing b");
                 self.b.next()?;
             }
         }
