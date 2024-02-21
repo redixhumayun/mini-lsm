@@ -1,25 +1,39 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use std::io::{self, ErrorKind};
+use std::{
+    io::{self, ErrorKind},
+    ops::Bound,
+};
 
 use anyhow::Result;
+use bytes::Bytes;
 
 use crate::{
-    iterators::{merge_iterator::MergeIterator, StorageIterator},
+    iterators::{
+        merge_iterator::MergeIterator, two_merge_iterator::TwoMergeIterator, StorageIterator,
+    },
     mem_table::MemTableIterator,
+    table::SsTableIterator,
 };
 
 /// Represents the internal type for an LSM iterator. This type will be changed across the tutorial for multiple times.
-type LsmIteratorInner = MergeIterator<MemTableIterator>;
+type LsmIteratorInner =
+    TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<SsTableIterator>>;
 
 pub struct LsmIterator {
     inner: LsmIteratorInner,
+    upper_bound: Bound<Bytes>,
+    is_valid: bool,
 }
 
 impl LsmIterator {
-    pub(crate) fn new(iter: LsmIteratorInner) -> Result<Self> {
-        let mut lsm_iter = Self { inner: iter };
+    pub(crate) fn new(iter: LsmIteratorInner, upper_bound: Bound<Bytes>) -> Result<Self> {
+        let mut lsm_iter = Self {
+            is_valid: iter.is_valid(),
+            inner: iter,
+            upper_bound,
+        };
 
         //  when an iterator is first created, there is the possibility that
         //  the very first key-value pair is a tombstone so need to account for that
@@ -34,6 +48,21 @@ impl LsmIterator {
     fn skip_deleted_values(&mut self) -> Result<()> {
         while self.inner.value().is_empty() && self.inner.is_valid() {
             self.inner.next()?;
+            match self.upper_bound.as_ref() {
+                Bound::Included(key) => {
+                    if self.inner.key().raw_ref() > key {
+                        //invalidate the iterator
+                        self.is_valid = false;
+                    }
+                }
+                Bound::Excluded(key) => {
+                    if self.inner.key().raw_ref() >= key {
+                        //  invalidate the iterator
+                        self.is_valid = false;
+                    }
+                }
+                Bound::Unbounded => {}
+            }
         }
         Ok(())
     }
@@ -43,7 +72,7 @@ impl StorageIterator for LsmIterator {
     type KeyType<'a> = &'a [u8];
 
     fn is_valid(&self) -> bool {
-        self.inner.is_valid()
+        self.is_valid
     }
 
     fn key(&self) -> &[u8] {
@@ -56,6 +85,21 @@ impl StorageIterator for LsmIterator {
 
     fn next(&mut self) -> Result<()> {
         self.inner.next()?;
+        match self.upper_bound.as_ref() {
+            Bound::Included(key) => {
+                if self.inner.key().raw_ref() > key {
+                    //invalidate the iterator
+                    self.is_valid = false;
+                }
+            }
+            Bound::Excluded(key) => {
+                if self.inner.key().raw_ref() >= key {
+                    //  invalidate the iterator
+                    self.is_valid = false;
+                }
+            }
+            Bound::Unbounded => {}
+        }
         self.skip_deleted_values()?;
         Ok(())
     }

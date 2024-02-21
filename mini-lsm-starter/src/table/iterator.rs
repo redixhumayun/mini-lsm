@@ -37,9 +37,7 @@ impl SsTableIterator {
     }
 
     fn seek_to(table: &Arc<SsTable>, key: KeySlice) -> Result<(usize, BlockIterator)> {
-        println!("ENTER: SSTable seek_to");
         let mut block_index = table.find_block_idx(key);
-        println!("Found the key in block {}", block_index);
         let block = table.read_block_cached(block_index).unwrap();
         let mut block_iter = BlockIterator::create_and_seek_to_key(block, key);
         if !block_iter.is_valid() {
@@ -49,7 +47,6 @@ impl SsTableIterator {
                     BlockIterator::create_and_seek_to_first(table.read_block_cached(block_index)?);
             }
         }
-        println!("EXIT: SSTable seek_to");
         Ok((block_index, block_iter))
     }
 
@@ -96,20 +93,17 @@ impl StorageIterator for SsTableIterator {
     /// Move to the next `key` in the block.
     /// Note: You may want to check if the current block iterator is valid after the move.
     fn next(&mut self) -> Result<()> {
-        println!("ENTER: SSTable iter next");
         if self.is_valid() {
             self.blk_iter.next();
             if !self.blk_iter.is_valid() {
                 self.blk_idx += 1;
                 if self.blk_idx < self.table.num_of_blocks() {
-                    println!("Moving to the next data block in the SSTable");
                     let new_block = self.table.read_block_cached(self.blk_idx)?;
                     let new_block_iter = BlockIterator::create_and_seek_to_first(new_block);
                     self.blk_iter = new_block_iter;
                 }
             }
         }
-        println!("EXIT: SSTable iter next");
         Ok(())
     }
 }
