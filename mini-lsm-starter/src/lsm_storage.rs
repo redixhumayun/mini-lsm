@@ -18,7 +18,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::KeySlice;
+use crate::key::{Key, KeySlice};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{map_bound, MemTable};
@@ -282,7 +282,8 @@ impl LsmStorageInner {
     }
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
-    pub fn get(&self, _key: &[u8]) -> Result<Option<Bytes>> {
+    pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
+        //  first probe the memtables
         let state_guard = self.state.read();
         let mut memtables = Vec::new();
         memtables.push(Arc::clone(&state_guard.memtable));
@@ -293,13 +294,40 @@ impl LsmStorageInner {
                 .map(|memtable| Arc::clone(memtable)),
         );
         for memtable in memtables {
-            if let Some(value) = memtable.get(_key) {
+            if let Some(value) = memtable.get(key) {
                 if value.is_empty() {
                     return Ok(None);
                 }
                 return Ok(Some(value));
             }
         }
+        drop(state_guard);
+
+        //  value not found in memtables, create a merge iterator over the sstables and search through them
+        let snapshot = {
+            let state_guard = self.state.read();
+            Arc::clone(&state_guard)
+        };
+
+        let sstable_ids = &*snapshot.l0_sstables;
+        let mut sstable_iterators: Vec<Box<SsTableIterator>> = Vec::new();
+        for sstable_id in sstable_ids {
+            let sstable = snapshot.sstables.get(&sstable_id).unwrap();
+            let sstable_iter = SsTableIterator::create_and_seek_to_key(
+                Arc::clone(sstable),
+                KeySlice::from_slice(key),
+            )?;
+            sstable_iterators.push(Box::new(sstable_iter));
+        }
+        let sstable_merge_iterator = MergeIterator::create(sstable_iterators);
+        if sstable_merge_iterator.is_valid()
+            && sstable_merge_iterator.key() == Key::from_slice(key)
+            && !sstable_merge_iterator.value().is_empty()
+        {
+            let value = sstable_merge_iterator.value();
+            return Ok(Some(Bytes::copy_from_slice(value)));
+        }
+
         Ok(None)
     }
 
@@ -443,7 +471,6 @@ impl LsmStorageInner {
             TwoMergeIterator::create(memtable_merge_iterator, sstable_merge_iterator)?,
             map_bound(_upper),
         )?;
-        println!("Created the lsm iterator");
 
         Ok(FusedIterator::new(lsm_iterator))
     }
