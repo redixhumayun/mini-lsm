@@ -112,6 +112,12 @@ Yes, columnar data can be stored. The current format might still work assuming t
 * Consider the case that the LSM engine is built on object store services (i.e., S3). How would you optimize/change the SST format/parameters and the block cache to make it suitable for such services?
 Obvious answer - compress the SSTable for storage and increase the size of the SSTable file. Presumably the cache would be placed on the compute node to ensure that network requests are limited.
 
+##  Week 1 Day 5
+
+* Consider the case that a user has an iterator that iterates the whole storage engine, and the storage engine is 1TB large, so that it takes ~1 hour to scan all the data. What would be the problems if the user does so? (This is a good question and we will ask it several times at different points of the tutorial...)
+Apart from increased latency because processing power is being consumed by the iteration, the only other thing I could think of is that it is unlikely the iterator would be able to load all data into memory at once. This would require repeated random disk reads and flushes. 
+
+One other thing Alex mentioned on the Discord is "another aspect to think of is how much disk space would it take if we have such an iterator and the user is continuously writing new data/deleting keys or overwriting keys? Think of the case that we have 1TB of the data, create the iterator, and and the user overwrites 1TB data in the next hour. The original 1TB data cannot be released as the iterators are still using the data. So basically having a long-running iterator would cause space amplification as well as performance regressions (in week3 MVCC)"
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
