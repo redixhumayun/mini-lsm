@@ -97,13 +97,10 @@ impl SsTableBuilder {
         block_cache: Option<Arc<BlockCache>>,
         path: impl AsRef<Path>,
     ) -> Result<SsTable> {
-        println!("ENTER: SSTable build");
         self.freeze_block();
         let mut encoded_sst: Vec<u8> = Vec::new();
 
         encoded_sst.extend_from_slice(&self.data);
-
-        println!("The metadata for the SSTable block: {:?}", self.meta);
 
         //  encode meta section for each block
         let mut encoded_meta: Vec<u8> = Vec::new();
@@ -116,7 +113,6 @@ impl SsTableBuilder {
 
         //  write the entire encoding to disk
         let file = FileObject::create(path.as_ref(), encoded_sst)?;
-        println!("EXIT: SSTable build");
         Ok(SsTable {
             file,
             block_meta_offset: self.data.len(),
