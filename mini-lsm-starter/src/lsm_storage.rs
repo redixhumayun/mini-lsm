@@ -528,16 +528,24 @@ impl LsmStorageInner {
         table_first: &KeyBytes,
         table_last: &KeyBytes,
     ) -> bool {
-        let lower_overlap = match lower {
-            Bound::Included(key) => key >= table_first.as_key_slice().into_inner(),
-            Bound::Excluded(key) => key > table_first.as_key_slice().into_inner(),
-            Bound::Unbounded => true,
-        };
-        let upper_overlap = match upper {
-            Bound::Included(key) => key <= table_last.as_key_slice().into_inner(),
-            Bound::Excluded(key) => key < table_last.as_key_slice().into_inner(),
-            Bound::Unbounded => true,
-        };
-        lower_overlap && upper_overlap
+        match lower {
+            Bound::Excluded(key) if key >= table_last.as_key_slice().into_inner() => {
+                return false;
+            }
+            Bound::Included(key) if key > table_last.as_key_slice().into_inner() => {
+                return false;
+            }
+            _ => {}
+        }
+        match upper {
+            Bound::Excluded(key) if key <= table_first.as_key_slice().into_inner() => {
+                return false;
+            }
+            Bound::Included(key) if key < table_first.as_key_slice().into_inner() => {
+                return false;
+            }
+            _ => {}
+        }
+        true
     }
 }
