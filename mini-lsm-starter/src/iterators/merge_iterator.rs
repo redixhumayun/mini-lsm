@@ -57,12 +57,22 @@ impl<I: StorageIterator> MergeIterator<I> {
 
         let mut heap: BinaryHeap<HeapWrapper<I>> = BinaryHeap::new();
 
+        //  if none of the iterators are valid, just pick the last one as current
+        if iters.iter().all(|iter| !iter.is_valid()) {
+            let mut iters = iters;
+            return MergeIterator {
+                iters: heap,
+                current: Some(HeapWrapper(0, iters.pop().unwrap())),
+            };
+        }
+
         for (index, iter) in iters.into_iter().enumerate() {
             if iter.is_valid() {
                 let heap_wrapper = HeapWrapper(index, iter);
                 heap.push(heap_wrapper);
             }
         }
+
         let current = heap.pop().unwrap();
         MergeIterator {
             iters: heap,

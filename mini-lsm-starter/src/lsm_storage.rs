@@ -319,6 +319,10 @@ impl LsmStorageInner {
             )?;
             sstable_iterators.push(Box::new(sstable_iter));
         }
+        println!(
+            "Creating merge iterator with {} sstable iterators",
+            sstable_iterators.len()
+        );
         let sstable_merge_iterator = MergeIterator::create(sstable_iterators);
         if sstable_merge_iterator.is_valid()
             && sstable_merge_iterator.key() == Key::from_slice(key)
