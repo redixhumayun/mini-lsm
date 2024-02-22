@@ -736,7 +736,6 @@ impl LsmStorageInner {
                 // In tiered compaction, create a new tier
                 snapshot.levels.insert(0, (sst_id, vec![sst_id]));
             }
-            println!("flushed {}.sst with size={}", sst_id, sst.table_size());
             snapshot.sstables.insert(sst_id, sst);
             // Update the snapshot.
             *guard = Arc::new(snapshot);

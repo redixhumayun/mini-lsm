@@ -31,7 +31,6 @@ impl BlockIterator {
 
     /// Creates a block iterator and seek to the first entry.
     pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
-        println!("Creating an iterator around the block");
         let mut iter = BlockIterator::new(block);
         iter.seek_to_first();
         iter
@@ -72,7 +71,6 @@ impl BlockIterator {
     }
 
     fn seek_to(&mut self, index: usize) {
-        println!("Seeking to index {} in the block", index);
         let offset = self.block.offsets[index] as usize;
         let data_to_consider = &self.block.data[offset..];
 

@@ -45,13 +45,11 @@ impl SsTableBuilder {
             self.first_key = key.to_key_vec().raw_ref().to_vec();
         }
 
-        println!("Adding key-value pair to block");
         if self.builder.add(key, value) {
             self.last_key = key.to_key_vec().raw_ref().to_vec();
             return;
         }
 
-        println!("Adding key-value pair exceeded block limits. Freezing current block and creating new block");
         self.freeze_block();
 
         assert!(self.builder.add(key, value));
@@ -73,10 +71,6 @@ impl SsTableBuilder {
             first_key: Key::from_vec(self.first_key.clone()).into_key_bytes(),
             last_key: Key::from_vec(self.last_key.clone()).into_key_bytes(),
         };
-        println!(
-            "The offset for the data block within the SSTable: {}",
-            block_meta.offset
-        );
 
         self.data.extend_from_slice(&encoded_block);
         self.meta.push(block_meta);

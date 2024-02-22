@@ -96,24 +96,24 @@ fn test_task1_storage_get() {
         assert_eq!(state.imm_memtables.len(), 2);
     }
 
-    // assert_eq!(
-    //     storage.get(b"0").unwrap(),
-    //     Some(Bytes::from_static(b"2333333"))
-    // );
-    // assert_eq!(
-    //     storage.get(b"00").unwrap(),
-    //     Some(Bytes::from_static(b"2333"))
-    // );
-    // assert_eq!(
-    //     storage.get(b"2").unwrap(),
-    //     Some(Bytes::from_static(b"2333"))
-    // );
-    // assert_eq!(
-    //     storage.get(b"3").unwrap(),
-    //     Some(Bytes::from_static(b"23333"))
-    // );
-    // assert_eq!(storage.get(b"4").unwrap(), None);
-    // assert_eq!(storage.get(b"--").unwrap(), None);
+    assert_eq!(
+        storage.get(b"0").unwrap(),
+        Some(Bytes::from_static(b"2333333"))
+    );
+    assert_eq!(
+        storage.get(b"00").unwrap(),
+        Some(Bytes::from_static(b"2333"))
+    );
+    assert_eq!(
+        storage.get(b"2").unwrap(),
+        Some(Bytes::from_static(b"2333"))
+    );
+    assert_eq!(
+        storage.get(b"3").unwrap(),
+        Some(Bytes::from_static(b"23333"))
+    );
+    assert_eq!(storage.get(b"4").unwrap(), None);
+    assert_eq!(storage.get(b"--").unwrap(), None);
     assert_eq!(storage.get(b"555").unwrap(), None);
 }
 
@@ -134,6 +134,18 @@ fn test_task2_auto_flush() {
     std::thread::sleep(Duration::from_millis(500));
 
     assert!(!storage.inner.state.read().l0_sstables.is_empty());
+}
+
+#[test]
+fn test_task3_sst_simple() {
+    let dir = tempdir().unwrap();
+    let storage =
+        Arc::new(LsmStorageInner::open(&dir, LsmStorageOptions::default_for_week1_test()).unwrap());
+
+    storage.put("0".as_bytes(), "000".as_bytes()).unwrap();
+
+    let iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+    println!("The number of iterators {}", iter.num_active_iterators());
 }
 
 #[test]
@@ -172,6 +184,8 @@ fn test_task3_sst_filter() {
             Bound::Excluded(format!("{:05}", 1).as_bytes()),
         )
         .unwrap();
+    println!("Min {}", min_num);
+    println!("iterators {}", iter.num_active_iterators());
     assert_eq!(iter.num_active_iterators(), min_num);
     let iter = storage
         .scan(

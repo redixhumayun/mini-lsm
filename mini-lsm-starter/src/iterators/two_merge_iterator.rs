@@ -8,7 +8,7 @@ pub struct TwoMergeIterator<A: StorageIterator, B: StorageIterator> {
     a: A,
     b: B,
     // Add fields as need
-    use_iterator: u8, // this can be 0 (use a), 1 (use b), 2 (use c)
+    use_iterator: u8, // this can be 0 (use a), 1 (use b), 2 (use both)
 }
 
 impl<
@@ -22,33 +22,20 @@ impl<
     }
 
     fn decide_which_iter_to_use(a: &A, b: &B) -> u8 {
-        println!("ENTER: TwoMergeIterator::decide_which_iter_to_use()");
         if !a.is_valid() && b.is_valid() {
-            println!("Using b");
-            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             return 1;
         }
         if a.is_valid() && !b.is_valid() {
-            println!("Using a");
-            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             return 0;
         }
         if !a.is_valid() && !b.is_valid() {
-            println!("Both are invalid");
-            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             return u8::MAX;
         }
         if a.key() < b.key() {
-            println!("Using a");
-            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             0
         } else if a.key() > b.key() {
-            println!("Using b");
-            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             1
         } else {
-            println!("Using both");
-            println!("EXIT: TwoMergeIterator::decide_which_iter_to_use()");
             2
         }
     }
@@ -117,5 +104,9 @@ impl<
         }
         self.use_iterator = TwoMergeIterator::decide_which_iter_to_use(&self.a, &self.b);
         Ok(())
+    }
+
+    fn num_active_iterators(&self) -> usize {
+        self.a.num_active_iterators() + self.b.num_active_iterators()
     }
 }

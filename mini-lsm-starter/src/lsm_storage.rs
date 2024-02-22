@@ -18,7 +18,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::{Key, KeySlice};
+use crate::key::{self, Key, KeyBytes, KeySlice};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{map_bound, MemTable};
@@ -144,7 +144,14 @@ impl Drop for MiniLsm {
 
 impl MiniLsm {
     pub fn close(&self) -> Result<()> {
-        unimplemented!()
+        let mut flush_thread = self.flush_thread.lock();
+        if let Some(flush_thread) = flush_thread.take() {
+            match flush_thread.join() {
+                std::result::Result::Ok(_) => (),
+                Err(e) => eprintln!("flush thread panicked: {:?}", e),
+            }
+        }
+        Ok(())
     }
 
     /// Start the storage engine by either loading an existing directory or creating a new one if the directory does
@@ -313,16 +320,18 @@ impl LsmStorageInner {
         let mut sstable_iterators: Vec<Box<SsTableIterator>> = Vec::new();
         for sstable_id in sstable_ids {
             let sstable = snapshot.sstables.get(&sstable_id).unwrap();
+            //  check if the sstable can have the key within its range
+            if key < sstable.first_key().as_key_slice().into_inner()
+                || key > sstable.last_key().as_key_slice().into_inner()
+            {
+                continue;
+            }
             let sstable_iter = SsTableIterator::create_and_seek_to_key(
                 Arc::clone(sstable),
                 KeySlice::from_slice(key),
             )?;
             sstable_iterators.push(Box::new(sstable_iter));
         }
-        println!(
-            "Creating merge iterator with {} sstable iterators",
-            sstable_iterators.len()
-        );
         let sstable_merge_iterator = MergeIterator::create(sstable_iterators);
         if sstable_merge_iterator.is_valid()
             && sstable_merge_iterator.key() == Key::from_slice(key)
@@ -445,8 +454,8 @@ impl LsmStorageInner {
     /// Create an iterator over a range of keys.
     pub fn scan(
         &self,
-        _lower: Bound<&[u8]>,
-        _upper: Bound<&[u8]>,
+        lower: Bound<&[u8]>,
+        upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
         //  create the merge iterator for the memtables here
         let state_guard = self.state.read();
@@ -461,7 +470,7 @@ impl LsmStorageInner {
         let mut memtable_iterators = Vec::new();
         for memtable in memtables {
             //  create a memtable iterator for each memtable
-            let iterator = memtable.scan(_lower, _upper);
+            let iterator = memtable.scan(lower, upper);
             memtable_iterators.push(Box::new(iterator));
         }
         let memtable_merge_iterator = MergeIterator::create(memtable_iterators);
@@ -478,7 +487,12 @@ impl LsmStorageInner {
         let mut sstable_iterators: Vec<Box<SsTableIterator>> = Vec::new();
         for sstable_id in sstable_ids {
             let sstable = snapshot.sstables.get(&sstable_id).unwrap();
-            let sstable_iter = match _lower {
+            //  need to skip building any iterators that cannot contain the key
+            if !self.range_overlap(lower, upper, sstable.first_key(), sstable.last_key()) {
+                continue;
+            }
+
+            let sstable_iter = match lower {
                 Bound::Included(key) => SsTableIterator::create_and_seek_to_key(
                     Arc::clone(sstable),
                     KeySlice::from_slice(key),
@@ -501,9 +515,29 @@ impl LsmStorageInner {
 
         let lsm_iterator = LsmIterator::new(
             TwoMergeIterator::create(memtable_merge_iterator, sstable_merge_iterator)?,
-            map_bound(_upper),
+            map_bound(upper),
         )?;
 
         Ok(FusedIterator::new(lsm_iterator))
+    }
+
+    fn range_overlap(
+        &self,
+        lower: Bound<&[u8]>,
+        upper: Bound<&[u8]>,
+        table_first: &KeyBytes,
+        table_last: &KeyBytes,
+    ) -> bool {
+        let lower_overlap = match lower {
+            Bound::Included(key) => key >= table_first.as_key_slice().into_inner(),
+            Bound::Excluded(key) => key > table_first.as_key_slice().into_inner(),
+            Bound::Unbounded => true,
+        };
+        let upper_overlap = match upper {
+            Bound::Included(key) => key <= table_last.as_key_slice().into_inner(),
+            Bound::Excluded(key) => key < table_last.as_key_slice().into_inner(),
+            Bound::Unbounded => true,
+        };
+        lower_overlap && upper_overlap
     }
 }

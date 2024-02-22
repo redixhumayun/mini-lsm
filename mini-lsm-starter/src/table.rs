@@ -181,26 +181,17 @@ impl SsTable {
 
     /// Read a block from the disk.
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        println!("ENTER: SSTable read_block");
-        println!("Reading block {}", block_idx);
         let block_offset_start = self.block_meta[block_idx].offset;
         let block_offset_end = if block_idx + 1 < self.block_meta.len() {
             self.block_meta[block_idx + 1].offset
         } else {
-            println!("Reading to the beginning of the meta section");
             self.block_meta_offset
         };
         let block_len = block_offset_end - block_offset_start;
-        println!(
-            "Reading from {} to {} for length {}",
-            block_offset_start, block_offset_end, block_len
-        );
         let block_data_raw = self
             .file
             .read(block_offset_start as u64, block_len as u64)?;
         let block_data = Block::decode(&block_data_raw);
-        println!("The offsets in the block are {:?}", block_data.offsets);
-        println!("EXIT: SSTable read_block");
         Ok(Arc::new(block_data))
     }
 

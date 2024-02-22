@@ -147,4 +147,18 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
         println!("EXIT: merge_iterator::next()");
         Ok(())
     }
+
+    fn num_active_iterators(&self) -> usize {
+        let heap_active_iters: usize = self
+            .iters
+            .iter()
+            .map(|iter| iter.1.num_active_iterators())
+            .sum();
+        let current_active_iters: usize = self
+            .current
+            .iter()
+            .map(|iter| iter.1.num_active_iterators())
+            .sum();
+        heap_active_iters + current_active_iters
+    }
 }

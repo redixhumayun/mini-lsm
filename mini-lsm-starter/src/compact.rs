@@ -16,7 +16,7 @@ pub use simple_leveled::{
 pub use tiered::{TieredCompactionController, TieredCompactionOptions, TieredCompactionTask};
 
 use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
-use crate::table::SsTable;
+use crate::table::{SsTable, SsTableBuilder};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompactionTask {
@@ -145,6 +145,14 @@ impl LsmStorageInner {
     }
 
     fn trigger_flush(&self) -> Result<()> {
+        {
+            let state_guard = self.state.read();
+            if state_guard.imm_memtables.len() < self.options.num_memtable_limit {
+                return Ok(());
+            }
+        }
+
+        self.force_flush_next_imm_memtable()?;
         Ok(())
     }
 

@@ -1,6 +1,3 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 use std::{
     io::{self, ErrorKind},
     ops::Bound,
@@ -46,9 +43,7 @@ impl LsmIterator {
     //  this marks a tombstone. this key should be skipped so that the consumer
     //  of this iterator does not see it
     fn skip_deleted_values(&mut self) -> Result<()> {
-        println!("ENTER: lsm_iterator::skip_deleted_values()");
         while self.inner.is_valid() && self.inner.value().is_empty() {
-            println!("Skipping deleted value for key {:?}", self.inner.key());
             self.inner.next()?;
             if !self.inner.is_valid() {
                 self.is_valid = false;
@@ -70,7 +65,6 @@ impl LsmIterator {
                 Bound::Unbounded => {}
             }
         }
-        println!("EXIT: lsm_iterator::skip_deleted_values()");
         Ok(())
     }
 }
@@ -115,6 +109,10 @@ impl StorageIterator for LsmIterator {
         self.skip_deleted_values()?;
         println!("EXIT: lsm_iterator::next()");
         Ok(())
+    }
+
+    fn num_active_iterators(&self) -> usize {
+        self.inner.num_active_iterators()
     }
 }
 
@@ -167,5 +165,9 @@ impl<I: StorageIterator> StorageIterator for FusedIterator<I> {
                 Err(e)
             }
         }
+    }
+
+    fn num_active_iterators(&self) -> usize {
+        self.iter.num_active_iterators()
     }
 }

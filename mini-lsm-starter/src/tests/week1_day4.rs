@@ -48,12 +48,9 @@ fn num_of_keys() -> usize {
 fn generate_sst_small() -> (TempDir, SsTable) {
     let mut builder = SsTableBuilder::new(128);
     for idx in 0..num_of_keys_small() {
-        println!("********");
-        println!("Adding key {}", format!("key_{:03}", idx * 5));
         let key = key_of(idx);
         let value = value_of(idx);
         builder.add(key.as_key_slice(), &value[..]);
-        println!("Done adding key {}", format!("key_{:03}", idx * 5));
     }
     let dir = tempdir().unwrap();
     let path = dir.path().join("1.sst");
