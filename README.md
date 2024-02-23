@@ -119,6 +119,27 @@ Apart from increased latency because processing power is being consumed by the i
 
 One other thing Alex mentioned on the Discord is "another aspect to think of is how much disk space would it take if we have such an iterator and the user is continuously writing new data/deleting keys or overwriting keys? Think of the case that we have 1TB of the data, create the iterator, and and the user overwrites 1TB data in the next hour. The original 1TB data cannot be released as the iterators are still using the data. So basically having a long-running iterator would cause space amplification as well as performance regressions (in week3 MVCC)"
 
+##  Week 1 Day 6
+
+* What happens if a user requests to delete a key twice?
+The key value pair should be set as `{key}{""}` but the user should see no effect apart from getting a null value when attempting to fetch the key
+* How much memory (or number of blocks) will be loaded into memory at the same time when the iterator is initialized?
+This would just be a function of the number of iterators that passed the filter test
+
+##  Week 1 Day 7
+
+* How does the bloom filter help with the SST filtering process? What kind of information can it tell you about a key? (may not exist/may exist/must exist/must not exist)
+Tells you with 100% guarantee if the key doesn't exist.
+* Consider the case that we need a backward iterator. Does our key compression affect backward iterators?
+It shouldn't. Since the is being uncompressed based on the first key, it should still work just fine. Just have to ensure the first key (in this case the last key is loaded)
+* Can you use bloom filters on scan?
+Yes, you can. Each block has a bloom filter so check if the block contains the key within the range you want. Although, it wouldn't be a big performance benefit over a range overlap check since its a single comparison on each block anyway.
+* What might be the pros/cons of doing key-prefix encoding over adjacent keys instead of with the first key in the block?
+Pros:
+- Compression is more likely because keys are typically stored in sorted order so the chances of overlap are higher
+Cons:
+- More complex to implement and maintain
+
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
 # LSM in a Week
