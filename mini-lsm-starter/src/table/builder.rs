@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{BlockMeta, FileObject, SsTable};
+use super::{bloom::Bloom, BlockMeta, FileObject, SsTable};
 use crate::{
     block::{Block, BlockBuilder},
     key::{Key, KeySlice},
@@ -21,6 +21,7 @@ pub struct SsTableBuilder {
     data: Vec<u8>,
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
+    key_hashes: Vec<u32>,
 }
 
 impl SsTableBuilder {
@@ -33,6 +34,7 @@ impl SsTableBuilder {
             data: Vec::new(),
             meta: Vec::new(),
             block_size,
+            key_hashes: Vec::new(),
         }
     }
 
@@ -44,6 +46,9 @@ impl SsTableBuilder {
         if self.first_key.is_empty() {
             self.first_key = key.to_key_vec().raw_ref().to_vec();
         }
+
+        self.key_hashes
+            .push(farmhash::fingerprint32(key.into_inner()));
 
         if self.builder.add(key, value) {
             self.last_key = key.to_key_vec().raw_ref().to_vec();
@@ -92,18 +97,27 @@ impl SsTableBuilder {
         path: impl AsRef<Path>,
     ) -> Result<SsTable> {
         self.freeze_block();
-        let mut encoded_sst: Vec<u8> = Vec::new();
 
+        //  create the bloom filter
+        let bits_per_key = Bloom::bloom_bits_per_key(self.key_hashes.len(), 0.01);
+        let bloom_filter = Bloom::build_from_key_hashes(&self.key_hashes, bits_per_key);
+
+        let mut encoded_sst: Vec<u8> = Vec::new();
         encoded_sst.extend_from_slice(&self.data);
 
-        //  encode meta section for each block
+        //  encode meta section for each block and add it to encoding
         let mut encoded_meta: Vec<u8> = Vec::new();
         BlockMeta::encode_block_meta(&self.meta, &mut encoded_meta);
         encoded_sst.extend_from_slice(&encoded_meta);
 
-        //  encode the meta block offset in the last 4 bytes
+        //  encode the meta block offset in the next 4 bytes
         let data_len = (self.data.len() as u32).to_le_bytes();
         encoded_sst.extend_from_slice(&data_len);
+
+        //  encode the bloom filter and add it to encoded table
+        let bloom_filter_offset = encoded_sst.len() as u32;
+        bloom_filter.encode(&mut encoded_sst);
+        encoded_sst.extend_from_slice(&bloom_filter_offset.to_le_bytes());
 
         //  write the entire encoding to disk
         let file = FileObject::create(path.as_ref(), encoded_sst)?;
@@ -115,7 +129,7 @@ impl SsTableBuilder {
             first_key: self.meta.first().unwrap().first_key.clone(),
             last_key: self.meta.last().unwrap().last_key.clone(),
             block_meta: self.meta,
-            bloom: None,
+            bloom: Some(bloom_filter),
             max_ts: 0,
         })
     }

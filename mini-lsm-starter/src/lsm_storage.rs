@@ -18,7 +18,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::{self, Key, KeyBytes, KeySlice};
+use crate::key::{Key, KeyBytes, KeySlice};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{map_bound, MemTable};
@@ -325,6 +325,12 @@ impl LsmStorageInner {
                 || key > sstable.last_key().as_key_slice().into_inner()
             {
                 continue;
+            }
+            //  check if the tables bloom filter returns a negative
+            if let Some(bloom_filter) = &sstable.bloom {
+                if !bloom_filter.may_contain(farmhash::fingerprint32(key)) {
+                    continue;
+                }
             }
             let sstable_iter = SsTableIterator::create_and_seek_to_key(
                 Arc::clone(sstable),
