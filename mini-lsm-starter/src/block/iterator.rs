@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use bytes::Buf;
+
 use crate::key::{KeySlice, KeyVec};
 
 use super::Block;
@@ -15,18 +17,27 @@ pub struct BlockIterator {
     /// Current index of the key-value pair, should be in range of [0, num_of_elements)
     idx: usize,
     /// The first key in the block
-    _first_key: KeyVec,
+    first_key: KeyVec,
 }
 
 impl BlockIterator {
     fn new(block: Arc<Block>) -> Self {
         Self {
+            first_key: BlockIterator::decode_first_key(&block),
             block,
             key: KeyVec::new(),
             value_range: (0, 0),
             idx: 0,
-            _first_key: KeyVec::new(),
         }
+    }
+
+    fn decode_first_key(block: &Arc<Block>) -> KeyVec {
+        let mut buf = &block.data[..];
+        let overlap_length = buf.get_u16_le(); //  read the overlap length (should be 0)
+        assert_eq!(overlap_length, 0);
+        let key_length = buf.get_u16_le(); //  read the key length
+        let key = &buf[..key_length as usize];
+        KeyVec::from_vec(key.to_vec())
     }
 
     /// Creates a block iterator and seek to the first entry.
@@ -74,17 +85,24 @@ impl BlockIterator {
         let offset = self.block.offsets[index] as usize;
         let data_to_consider = &self.block.data[offset..];
 
-        let (key_length_raw, rest) = data_to_consider.split_at(2);
+        let (key_overlap_length_raw, rest) = data_to_consider.split_at(2);
+        let key_overlap_length = u16::from_le_bytes(key_overlap_length_raw.try_into().unwrap());
+
+        let (key_length_raw, rest) = rest.split_at(2);
         let key_length = u16::from_le_bytes(key_length_raw.try_into().unwrap());
 
         let (key, rest) = rest.split_at(key_length as usize);
-        self.key = KeyVec::from_vec(key.to_vec());
+        let key_overlap = &(self.first_key.clone().into_inner())[..key_overlap_length as usize];
+        let mut full_key = Vec::new();
+        full_key.extend_from_slice(&key_overlap);
+        full_key.extend_from_slice(&key);
+        self.key = KeyVec::from_vec(full_key);
 
         let (value_length_raw, rest) = rest.split_at(2);
         let value_length = u16::from_le_bytes(value_length_raw.try_into().unwrap());
 
         let (_, _) = rest.split_at(value_length as usize);
-        let new_value_start = offset + 2 + key_length as usize;
+        let new_value_start = offset + 2 + 2 + key_length as usize;
         self.value_range = (
             new_value_start + 2,
             new_value_start + 2 + value_length as usize,

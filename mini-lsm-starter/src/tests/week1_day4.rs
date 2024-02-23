@@ -98,10 +98,8 @@ fn as_bytes(x: &[u8]) -> Bytes {
 fn test_sst_iterator_simple() {
     let (_dir, sst) = generate_sst_small();
     let sst = Arc::new(sst);
-    println!("START READING");
     let mut iter = SsTableIterator::create_and_seek_to_first(sst).unwrap();
     for i in 0..num_of_keys_small() {
-        println!("Reading key {}", format!("key_{:03}", i * 5));
         let key = iter.key();
         let value = iter.value();
         assert_eq!(
@@ -118,7 +116,6 @@ fn test_sst_iterator_simple() {
             as_bytes(&value_of(i)),
             as_bytes(value)
         );
-        println!("Done reading key {}", format!("key_{:03}", i * 5));
         iter.next().unwrap();
     }
 }
@@ -157,7 +154,6 @@ fn test_sst_seek_key_more_simple() {
     let (_dir, sst) = generate_sst_small();
     let sst = Arc::new(sst);
     let mut iter = SsTableIterator::create_and_seek_to_key(sst, key_of(0).as_key_slice()).unwrap();
-    println!("Looking for key key_016");
     iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(
         &format!("key_016").into_bytes(),
     ))
@@ -168,12 +164,9 @@ fn test_sst_seek_key_more_simple() {
 fn test_sst_seek_key_simple() {
     let (_dir, sst) = generate_sst_small();
     let sst = Arc::new(sst);
-    println!("*******START READING*********");
     let mut iter = SsTableIterator::create_and_seek_to_key(sst, key_of(0).as_key_slice()).unwrap();
-    println!("*******START ITERATION*******");
     for offset in 1..=5 {
         for i in 0..num_of_keys_small() {
-            println!("Reading key {}", format!("key_{:03}", i * 5));
             let key = iter.key();
             let value = iter.value();
             assert_eq!(
@@ -190,8 +183,6 @@ fn test_sst_seek_key_simple() {
                 as_bytes(&value_of(i)),
                 as_bytes(value)
             );
-            println!("Done reading key {}", format!("key_{:03}", i * 5));
-            println!("Seeking to key {}", format!("key_{:03}", i * 5 + offset));
             iter.seek_to_key(KeySlice::for_testing_from_slice_no_ts(
                 &format!("key_{:03}", i * 5 + offset).into_bytes(),
             ))

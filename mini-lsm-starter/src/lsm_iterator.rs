@@ -85,7 +85,6 @@ impl StorageIterator for LsmIterator {
     }
 
     fn next(&mut self) -> Result<()> {
-        println!("ENTER: lsm_iterator::next()");
         self.inner.next()?;
         if !self.inner.is_valid() {
             self.is_valid = false;
@@ -107,7 +106,6 @@ impl StorageIterator for LsmIterator {
             Bound::Unbounded => {}
         }
         self.skip_deleted_values()?;
-        println!("EXIT: lsm_iterator::next()");
         Ok(())
     }
 

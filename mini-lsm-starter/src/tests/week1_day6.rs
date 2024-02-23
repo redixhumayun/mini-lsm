@@ -184,8 +184,6 @@ fn test_task3_sst_filter() {
             Bound::Excluded(format!("{:05}", 1).as_bytes()),
         )
         .unwrap();
-    println!("Min {}", min_num);
-    println!("iterators {}", iter.num_active_iterators());
     assert_eq!(iter.num_active_iterators(), min_num);
     let iter = storage
         .scan(

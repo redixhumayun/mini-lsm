@@ -51,15 +51,24 @@ fn value_of(idx: usize) -> Vec<u8> {
     format!("value_{:010}", idx).into_bytes()
 }
 
+fn num_of_keys_small() -> usize {
+    5
+}
+
 fn num_of_keys() -> usize {
     100
 }
 
 fn generate_small_block() -> Block {
     let mut builder = BlockBuilder::new(10000);
-    for idx in 0..2 {
+    for idx in 0..num_of_keys_small() {
         let key = key_of(idx);
         let value = value_of(idx);
+        println!(
+            "*****Adding key {} value {} pair to block*****",
+            String::from_utf8(key.clone().into_inner()).unwrap(),
+            String::from_utf8(value.clone()).unwrap()
+        );
         assert!(builder.add(key.as_key_slice(), &value[..]));
     }
     builder.build()
@@ -110,7 +119,8 @@ fn as_bytes(x: &[u8]) -> Bytes {
 
 #[test]
 fn test_block_iterator_simple_1_value() {
-    let block = Arc::new(generate_block());
+    let block = Arc::new(generate_small_block());
+
     let iter = BlockIterator::create_and_seek_to_first(block);
 
     let key = iter.key();

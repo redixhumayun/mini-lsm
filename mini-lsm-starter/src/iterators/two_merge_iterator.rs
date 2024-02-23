@@ -57,11 +57,8 @@ impl<
 
     fn value(&self) -> &[u8] {
         if self.use_iterator == 0 || self.use_iterator == 2 {
-            println!("Getting value of a");
             return self.a.value();
         }
-        println!("Getting value of b");
-        println!("Is b valid {}", self.b.is_valid());
         self.b.value()
     }
 
@@ -76,29 +73,22 @@ impl<
     }
 
     fn next(&mut self) -> Result<()> {
-        println!("ENTER: TwoMergeIterator::next()");
-        println!("Using iterator {}", self.use_iterator);
         if self.use_iterator == 0 {
             //  advance the first iterator because the second one wasn't used
             if self.a.is_valid() {
-                println!("Advancing iterator a");
                 self.a.next()?;
             }
         } else if self.use_iterator == 1 {
             //  advance the second iterator because the first one wasn't used
             if self.b.is_valid() {
-                println!("Advancing iterator b");
                 self.b.next()?;
             }
         } else if self.use_iterator == 2 {
             //  advance both
-            println!("Advancing both");
             if self.a.is_valid() {
-                println!("Advancing a");
                 self.a.next()?;
             }
             if self.b.is_valid() {
-                println!("Advancing b");
                 self.b.next()?;
             }
         }

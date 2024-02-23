@@ -102,13 +102,11 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     }
 
     fn next(&mut self) -> Result<()> {
-        println!("ENTER: merge_iterator::next()");
         let current = self.current.as_mut().unwrap();
 
         //  Check if there are any keys that are identical - advance the lower ranked iterators in that case
         while let Some(mut heap_wrapper) = self.iters.peek_mut() {
             if heap_wrapper.1.key() == current.1.key() {
-                println!("The current and heap top have the same key, advancing the heap top");
                 //  The current and the heap top have the same key. Ignore the heap top key because we organised by reverse
                 //  chronological order when building the heap. The value in current should be what's upheld. Advance the top
                 if let Err(e) = heap_wrapper.1.next() {
@@ -129,22 +127,18 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
 
         //  check if the current iterator continues to be valid - if not, replace with the top
         if !current.1.is_valid() {
-            println!("The current is no longer valid, replacing it with the heap top");
             if let Some(heap_wrapper) = self.iters.pop() {
                 self.current = Some(heap_wrapper);
             }
-            println!("EXIT: merge_iterator::next()");
             return Ok(());
         }
 
         //  check if the current iterator should be replaced by the top value in the heap
         if let Some(mut heap_wrapper) = self.iters.peek_mut() {
             if current < &mut heap_wrapper {
-                println!("Replacing the current with the heap top");
                 std::mem::swap(current, &mut *heap_wrapper);
             }
         }
-        println!("EXIT: merge_iterator::next()");
         Ok(())
     }
 

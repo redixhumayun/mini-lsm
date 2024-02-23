@@ -28,13 +28,22 @@ impl BlockBuilder {
     /// Adds a key-value pair to the block. Returns false when the block is full.
     #[must_use]
     pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
-        let key_length = key.len();
-        let key_length_bytes = (key_length as u16).to_le_bytes();
+        //  get the overlap of the key with the first key
+        let key_overlap = key
+            .into_inner()
+            .iter()
+            .zip(self.first_key.as_key_slice().into_inner().iter())
+            .take_while(|(a, b)| a == b)
+            .count() as u16;
+        let key_overlap_bytes = key_overlap.to_le_bytes();
+        let rest_of_key = &(key.into_inner())[key_overlap as usize..];
+        let rest_of_key_len = (rest_of_key.len() as u16).to_le_bytes();
+
         let value_length = value.len();
         let value_length_bytes = (value_length as u16).to_le_bytes();
-        let size_required = 2 + key_length + 2 + value_length + 2;
+        let entry_size = 2 + rest_of_key.len() + 2 + value_length + 2;
 
-        if self.data.len() + self.offsets.len() + size_required > self.block_size
+        if self.data.len() + self.offsets.len() + entry_size > self.block_size
             && self.first_key.raw_ref().len() > 0
         {
             return false;
@@ -42,8 +51,9 @@ impl BlockBuilder {
 
         self.offsets.push(self.data.len() as u16);
 
-        self.data.extend_from_slice(&key_length_bytes);
-        self.data.extend_from_slice(key.into_inner());
+        self.data.extend_from_slice(&key_overlap_bytes);
+        self.data.extend_from_slice(&rest_of_key_len);
+        self.data.extend_from_slice(rest_of_key);
         self.data.extend_from_slice(&value_length_bytes);
         self.data.extend_from_slice(value);
 
