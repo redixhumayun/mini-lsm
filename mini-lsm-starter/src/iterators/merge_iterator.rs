@@ -159,17 +159,11 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     /// Prints the current state of the MergeIterator, including the active iterator and the state of iterators in the heap.
     fn print(&self) {
         let sep = "-".repeat(10);
-        println!(
-            "{} {} {}\n",
-            sep,
-            format!("{:^25}", "Merge Iterator State"),
-            sep
-        );
+        println!("{} {} {}\n", sep, format!("{:^25}", "Merge Iterator"), sep);
 
         // Print the current active iterator's state
         if let Some(current) = &self.current {
             if current.1.is_valid() {
-                println!("CURRENT HEAP ITERATOR");
                 println!("Current Iterator (Index {}):", current.0);
                 current.1.print();
             } else {
@@ -188,14 +182,14 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
             } else {
                 "Invalid"
             };
-            println!("  Iterator Index {}: {}", heap_wrapper.0, valid_status);
+            println!("Iterator Index {}: {}", heap_wrapper.0, valid_status);
             heap_wrapper.1.print();
         }
 
         println!(
             "{} {} {}",
             sep,
-            format!("{:^25}", "End Merge Iterator State"),
+            format!("{:^25}", "End Merge Iterator"),
             sep
         );
     }

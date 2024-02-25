@@ -161,7 +161,7 @@ impl BlockIterator {
         println!(
             "{} {} {}",
             separator,
-            format!("{:^20}", "Block Iterator"),
+            format!("{:^25}", "Block Iterator"),
             separator
         );
 
@@ -191,7 +191,7 @@ impl BlockIterator {
         println!(
             "{} {} {}",
             separator,
-            format!("{:^20}", "Block Iterator End"),
+            format!("{:^25}", "Block Iterator End"),
             separator
         );
     }

@@ -189,6 +189,8 @@ impl StorageIterator for MemTableIterator {
 
     /// Prints the current key-value pair to the console.
     fn print(&self) {
+        let sep = "-".repeat(10);
+        println!("{} {} {}", sep, format!("{:^25}", "Memtable Iterator"), sep);
         if self.is_valid() {
             let key = self.with_item(|item| &item.0);
             let value = self.with_item(|item| &item.1);
@@ -203,10 +205,16 @@ impl StorageIterator for MemTableIterator {
                 Ok(s) => s.to_string(),
                 Err(_) => format!("{:X?}", value), // Fallback to hex representation if not valid UTF-8
             };
-
-            println!("Key: {}, Value: {}", key_str, value_str);
+            println!("{:<10}: {:?}", "Key", key_str);
+            println!("{:<10}: {:?}", "Value", value_str);
         } else {
             println!("Invalid Iterator State");
         }
+        println!(
+            "{} {} {}",
+            sep,
+            format!("{:^25}", "End Memtable Iterator"),
+            sep
+        );
     }
 }
