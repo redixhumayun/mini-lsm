@@ -15,6 +15,12 @@ cargo x copy-test --week 2 --day 1
 cargo x scheck
 ```
 
+<div class="warning">
+
+It might be helpful to take a look at [week 2 overview](./week2-overview.md) before reading this chapter to have a general overview of compactions.
+
+</div>
+
 ## Task 1: Compaction Implementation
 
 In this task, you will implement the core logic of doing a compaction -- merge sort a set of SST files into a sorted run. You will need to modify:
@@ -60,7 +66,7 @@ Because we always compact all SSTs, if we find multiple version of a key, we can
 
 There are some things that you might need to think about.
 
-* How does your implementation handle L0 flush in par with compaction? (Not taking the state lock when doing the compaction, and also need to consider new L0 files produced when compaction is going on.)
+* How does your implementation handle L0 flush in parallel with compaction? (Not taking the state lock when doing the compaction, and also need to consider new L0 files produced when compaction is going on.)
 * If your implementation removes the original SST files immediately after the compaction completes, will it cause problems in your system? (Generally no on macOS/Linux because the OS will not actually remove the file until no file handle is being held.)
 
 ## Task 2: Concat Iterator
@@ -68,7 +74,7 @@ There are some things that you might need to think about.
 In this task, you will need to modify,
 
 ```
-src/iterators/concat.rs
+src/iterators/concat_iterator.rs
 ```
 
 Now that you have created sorted runs in your system, it is possible to do a simple optimization over the read path. You do not always need to create merge iterators for your SSTs. If SSTs belong to one sorted run, you can create a concat iterator that simply iterates the keys in each SST in order, because SSTs in one sorted run do not contain overlapping key ranges and they are sorted by their first key. We do not want to create all SST iterators in advance (because it will lead to one block read), and therefore we only store SST objects in this iterator.

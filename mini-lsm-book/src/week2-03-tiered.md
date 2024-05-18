@@ -16,6 +16,12 @@ cargo x copy-test --week 2 --day 3
 cargo x scheck
 ```
 
+<div class="warning">
+
+It might be helpful to take a look at [week 2 overview](./week2-overview.md) before reading this chapter to have a general overview of compactions.
+
+</div>
+
 ## Task 1: Universal Compaction
 
 In this chapter, you will implement RocksDB's universal compaction, which is of the tiered compaction family compaction strategies. Similar to the simple leveled compaction strategy, we only use number of files as the indicator in this compaction strategy. And when we trigger the compaction jobs, we always include a full sorted run (tier) in the compaction job.
@@ -28,7 +34,7 @@ In this task, you will need to modify:
 src/compact/tiered.rs
 ```
 
-In universal compaction, we do not use L0 SSTs in the LSM state. Instead, we directly flush new SSTs to a single sorted run (called tier). In the LSM state, `levels` will now include all tiers, where the lowest index is the latest SST flushed. The compaction simulator generates tier id based on the first SST id, and you should do the same in your implementation.
+In universal compaction, we do not use L0 SSTs in the LSM state. Instead, we directly flush new SSTs to a single sorted run (called tier). In the LSM state, `levels` will now include all tiers, where **the lowest index is the latest SST flushed**. Each element in the `levels` vector stores a tuple: level ID (used as tier ID) and the SSTs in that level. Every time you flush L0 SSTs, you should flush the SST into a tier placed at the front of the vector. The compaction simulator generates tier id based on the first SST id, and you should do the same in your implementation.
 
 Universal compaction will only trigger tasks when the number of tiers (sorted runs) is larger than `num_tiers`. Otherwise, it does not trigger any compaction.
 
@@ -70,13 +76,13 @@ L67 (1): [67]
 L40 (27): [39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 ```
 
-The `num_iters` in the compaction simulator is set to 3. However, there are far more than 3 iters in the LSM state, which incurs large read amplification.
+The `num_tiers` in the compaction simulator is set to 3. However, there are far more than 3 tiers in the LSM state, which incurs large read amplification.
 
 The current trigger only reduces space amplification. We will need to add new triggers to the compaction algorithm to reduce read amplification.
 
 ### Task 1.2: Triggered by Size Ratio
 
-The next trigger is the size ratio trigger. For all tiers, if there is a tier `n` that `size of all previous tiers / this tier >= (1 + size_ratio) * 100%`, we will compact all `n` tiers. We only do this compaction with there are more than `min_merge_width` tiers to be merged.
+The next trigger is the size ratio trigger. For all tiers, if there is a tier `n` that `size of all previous tiers / this tier >= (100 + size_ratio) * 100%`, we will compact all `n` tiers. We only do this compaction with there are more than `min_merge_width` tiers to be merged.
 
 With this trigger, you will observe the following in the compaction simulator:
 

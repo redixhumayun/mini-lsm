@@ -173,7 +173,7 @@ pub struct MiniLsm {
     pub(crate) inner: Arc<LsmStorageInner>,
     /// Notifies the L0 flush thread to stop working. (In week 1 day 6)
     flush_notifier: crossbeam_channel::Sender<()>,
-    /// The handle for the compaction thread. (In week 1 day 6)
+    /// The handle for the flush thread. (In week 1 day 6)
     flush_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
     /// Notifies the compaction thread to stop working. (In week 2)
     compaction_notifier: crossbeam_channel::Sender<()>,
@@ -513,7 +513,7 @@ impl LsmStorageInner {
         let l0_iter = MergeIterator::create(l0_iters);
         let mut level_iters = Vec::with_capacity(snapshot.levels.len());
         for (_, level_sst_ids) in &snapshot.levels {
-            let mut level_ssts = Vec::with_capacity(snapshot.levels[0].1.len());
+            let mut level_ssts = Vec::with_capacity(level_sst_ids.len());
             for table in level_sst_ids {
                 let table = snapshot.sstables[table].clone();
                 if keep_table(key, &table) {
