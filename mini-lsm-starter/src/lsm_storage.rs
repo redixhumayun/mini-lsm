@@ -423,7 +423,7 @@ impl LsmStorageInner {
     pub fn force_flush_next_imm_memtable(&self) -> Result<()> {
         let _state_lock = self.state_lock.lock();
         let oldest_memtable = {
-            let state_guard = self.state.write();
+            let state_guard = self.state.read();
             let oldest_memtable = state_guard
                 .imm_memtables
                 .last()

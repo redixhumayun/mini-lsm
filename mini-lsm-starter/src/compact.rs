@@ -15,8 +15,9 @@ pub use simple_leveled::{
 };
 pub use tiered::{TieredCompactionController, TieredCompactionOptions, TieredCompactionTask};
 
+use crate::iterators::merge_iterator::{self, MergeIterator};
 use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
-use crate::table::{SsTable, SsTableBuilder};
+use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CompactionTask {
@@ -107,12 +108,61 @@ pub enum CompactionOptions {
 }
 
 impl LsmStorageInner {
-    fn compact(&self, _task: &CompactionTask) -> Result<Vec<Arc<SsTable>>> {
-        unimplemented!()
+    fn compact(&self, task: &CompactionTask) -> Result<Vec<Arc<SsTable>>> {
+        match task {
+            CompactionTask::ForceFullCompaction {
+                l0_sstables,
+                l1_sstables,
+            } => {
+                //  fetch all the required sstables first
+                let mut tables = Vec::new();
+                for table_id in l0_sstables {
+                    let lsm_state = self.state.read();
+                    let table = lsm_state
+                        .sstables
+                        .get(table_id)
+                        .ok_or_else(|| anyhow::anyhow!("sstable {} not found", table_id))?;
+                    tables.push(Arc::clone(table));
+                }
+                for table_id in l1_sstables {
+                    let lsm_state = self.state.read();
+                    let table = lsm_state
+                        .sstables
+                        .get(table_id)
+                        .ok_or_else(|| anyhow::anyhow!("sstable {} not found", table_id))?;
+                    tables.push(Arc::clone(table));
+                }
+
+                //  build an sstable iterator for each sstable and then build a merge iterator over all the individual iterators
+                let iterators = tables
+                    .into_iter()
+                    .map(|table| SsTableIterator::create_and_seek_to_first(table).map(Box::new))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let merge_iterator = MergeIterator::create(iterators);
+
+                //  iterate over merge iterator and write out results to sstables
+            }
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "compaction task variant apart from ForceFullCompaction passed in"
+                ));
+            }
+        }
+        Ok(Vec::new())
     }
 
     pub fn force_full_compaction(&self) -> Result<()> {
-        unimplemented!()
+        let ssts_to_read = {
+            let state = self.state.read();
+            let l0_sstables = state.l0_sstables.clone();
+            let l1_sstables = state.levels[1].clone().1;
+            (l0_sstables, l1_sstables)
+        };
+        self.compact(&CompactionTask::ForceFullCompaction {
+            l0_sstables: ssts_to_read.0,
+            l1_sstables: ssts_to_read.1,
+        })?;
+        Ok(())
     }
 
     fn trigger_compaction(&self) -> Result<()> {
