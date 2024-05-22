@@ -140,6 +140,33 @@ Pros:
 Cons:
 - More complex to implement and maintain
 
+##  Week 2 Day 1
+
+* What are the definitions of read/write/space amplifications? (This is covered in the overview chapter)
+Read amplification -> Number of I/O requests per get operation (for instance, if there are 100 SST's and the key is stored on the last SST, there are 100 I/O operations to get there) => I/O requests / get operation
+
+Write amplification -> Ratio of memtables flushed to disk versus total data written to disk => Total data written / number of memtables written. For example, if every SST flush requires a compaction, then the total data written to disk each time will be high because the older SST's will be merged and rewritten into a new SST with the flushed SST.
+
+Space amplification -> Ratio of actual space used by the engine to the data stored by the user (actual rows or key value pairs). A quick way to estimate this is to divide the full storage file size by the last level size with the assumption that the last level contains a snapshot of the user data and the upper levels contain changes.
+
+* What are the ways to accurately compute the read/write/space amplifications, and what are the ways to estimate them?
+Answered above
+
+* Is it correct that a key will take some storage space even if a user requests to delete it?
+Yes, until it is compacted away
+
+* Paper to read
+https://www.usenix.org/conference/atc19/presentation/balmau
+
+* Is it a good idea to use/fill the block cache for compactions? Or is it better to fully bypass the block cache when compaction?
+Unsure
+
+* Does it make sense to have a struct ConcatIterator<I: StorageIterator> in the system?
+Please no more abstractions and structs
+
+* Some researchers/engineers propose to offload compaction to a remote server or a serverless lambda function. What are the benefits, and what might be the potential challenges and performance impacts of doing remote compaction? (Think of the point when a compaction completes and what happens to the block cache on the next read request...)
+Unsure. raised question on Discord
+
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
 # LSM in a Week
