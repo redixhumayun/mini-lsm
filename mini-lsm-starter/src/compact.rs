@@ -15,7 +15,8 @@ pub use simple_leveled::{
 };
 pub use tiered::{TieredCompactionController, TieredCompactionOptions, TieredCompactionTask};
 
-use crate::iterators::merge_iterator::{self, MergeIterator};
+use crate::iterators::merge_iterator::MergeIterator;
+use crate::iterators::StorageIterator;
 use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
 use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
@@ -114,6 +115,8 @@ impl LsmStorageInner {
                 l0_sstables,
                 l1_sstables,
             } => {
+                let mut sstables = Vec::new();
+
                 //  fetch all the required sstables first
                 let mut tables = Vec::new();
                 for table_id in l0_sstables {
@@ -138,9 +141,47 @@ impl LsmStorageInner {
                     .into_iter()
                     .map(|table| SsTableIterator::create_and_seek_to_first(table).map(Box::new))
                     .collect::<Result<Vec<_>, _>>()?;
-                let merge_iterator = MergeIterator::create(iterators);
+                let mut merge_iterator = MergeIterator::create(iterators);
 
-                //  iterate over merge iterator and write out results to sstables
+                //  iterate over merge iterator and create new SSTables
+                let mut sstable_builder = SsTableBuilder::new(self.options.block_size);
+                let mut is_built = false;
+                while merge_iterator.is_valid() {
+                    is_built = false;
+                    let key = merge_iterator.key();
+                    let value = merge_iterator.value();
+                    if value.is_empty() {
+                        merge_iterator.next()?;
+                        continue;
+                    }
+                    sstable_builder.add(key, value);
+
+                    //  set this sstable and create a new builder
+                    if sstable_builder.estimated_size() >= self.options.target_sst_size {
+                        let sst_id = self.next_sst_id();
+                        let sstable = sstable_builder.build(
+                            sst_id,
+                            Some(Arc::clone(&self.block_cache)),
+                            self.path_of_sst(sst_id),
+                        )?;
+                        is_built = true;
+                        sstable_builder = SsTableBuilder::new(self.options.block_size);
+                        sstables.push(Arc::new(sstable));
+                    }
+
+                    merge_iterator.next()?;
+                }
+
+                if !is_built {
+                    let sst_id = self.next_sst_id();
+                    let sstable = sstable_builder.build(
+                        sst_id,
+                        Some(Arc::clone(&self.block_cache)),
+                        self.path_of_sst(sst_id),
+                    )?;
+                    sstables.push(Arc::new(sstable));
+                }
+                return Ok(sstables);
             }
             _ => {
                 return Err(anyhow::anyhow!(
@@ -148,20 +189,57 @@ impl LsmStorageInner {
                 ));
             }
         }
-        Ok(Vec::new())
     }
 
     pub fn force_full_compaction(&self) -> Result<()> {
-        let ssts_to_read = {
+        let (l0_sstables, l1_sstables) = {
             let state = self.state.read();
             let l0_sstables = state.l0_sstables.clone();
-            let l1_sstables = state.levels[1].clone().1;
+            let l1_sstables = state.levels[0].1.clone();
             (l0_sstables, l1_sstables)
         };
-        self.compact(&CompactionTask::ForceFullCompaction {
-            l0_sstables: ssts_to_read.0,
-            l1_sstables: ssts_to_read.1,
+        let new_sstables = self.compact(&CompactionTask::ForceFullCompaction {
+            l0_sstables: l0_sstables.clone(),
+            l1_sstables: l1_sstables.clone(),
         })?;
+
+        /*
+         Remove the old sstables from l0, l1 and the sstables hashmap
+         Add the newly generated sstables to l1
+        */
+        //  First remove the old sstables from l0 and l1
+        let _state_lock = self.state_lock.lock();
+        let mut state_guard = self.state.write();
+        let state = Arc::make_mut(&mut state_guard);
+        state.l0_sstables.retain(|id| !l0_sstables.contains(id));
+        for (level, sst_ids) in &mut state.levels {
+            if *level == 1 {
+                sst_ids.retain(|id| !l1_sstables.contains(id));
+            }
+        }
+
+        //  remove the old sstables from the hashmap of id -> sstable
+        for sst_id in l0_sstables.iter().chain(l1_sstables.iter()) {
+            state.sstables.remove(sst_id);
+        }
+
+        //  add the new sstables to levels with an l1 key
+        let (_, sst_ids_at_l1) = state
+            .levels
+            .iter_mut()
+            .find(|(level, _)| *level == 1)
+            .expect("No level found for L1 in levels");
+        sst_ids_at_l1.extend(new_sstables.iter().map(|sstable| sstable.sst_id()));
+
+        //  add the new sstables to the hashmap struct sstables
+        for sst in new_sstables {
+            state.sstables.insert(sst.sst_id(), sst);
+        }
+
+        //  remove the files for the old sstables
+        for sst in l0_sstables.iter().chain(l1_sstables.iter()) {
+            std::fs::remove_file(self.path_of_sst(*sst))?;
+        }
         Ok(())
     }
 

@@ -15,6 +15,7 @@ use crate::compact::{
     CompactionController, CompactionOptions, LeveledCompactionController, LeveledCompactionOptions,
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, TieredCompactionController,
 };
+use crate::iterators::concat_iterator::SstConcatIterator;
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
@@ -464,11 +465,14 @@ impl LsmStorageInner {
         upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
         //  create the merge iterator for the memtables here
-        let state_guard = self.state.read();
+        let snapshot = {
+            let state_guard = self.state.read();
+            Arc::clone(&state_guard)
+        };
         let mut memtables = Vec::new();
-        memtables.push(Arc::clone(&state_guard.memtable));
+        memtables.push(Arc::clone(&snapshot.memtable));
         memtables.extend(
-            state_guard
+            snapshot
                 .imm_memtables
                 .iter()
                 .map(|memtable| Arc::clone(memtable)),
@@ -480,18 +484,11 @@ impl LsmStorageInner {
             memtable_iterators.push(Box::new(iterator));
         }
         let memtable_merge_iterator = MergeIterator::create(memtable_iterators);
-        drop(state_guard);
 
-        //  create the merge iterator for the SsTables here
-        let snapshot = {
-            let state_guard = self.state.read();
-            Arc::clone(&state_guard)
-        };
-
-        //  retrieve the ids of the sstables
-        let sstable_ids = &*snapshot.l0_sstables;
-        let mut sstable_iterators: Vec<Box<SsTableIterator>> = Vec::new();
-        for sstable_id in sstable_ids {
+        //  create an iterator for sstables at l0
+        let l0_ssts = &*snapshot.l0_sstables;
+        let mut l0_iters = Vec::new();
+        for sstable_id in l0_ssts {
             let sstable = snapshot.sstables.get(&sstable_id).unwrap();
             //  need to skip building any iterators that cannot contain the key
             if !self.range_overlap(lower, upper, sstable.first_key(), sstable.last_key()) {
@@ -515,15 +512,41 @@ impl LsmStorageInner {
                 }
                 Bound::Unbounded => SsTableIterator::create_and_seek_to_first(Arc::clone(sstable))?,
             };
-            sstable_iterators.push(Box::new(sstable_iter));
+            l0_iters.push(Box::new(sstable_iter));
         }
-        let sstable_merge_iterator = MergeIterator::create(sstable_iterators);
+        let l0_iter = MergeIterator::create(l0_iters);
 
-        let lsm_iterator = LsmIterator::new(
-            TwoMergeIterator::create(memtable_merge_iterator, sstable_merge_iterator)?,
-            map_bound(upper),
-        )?;
+        //  create an iterator for sstables at l1
+        let l1_sst_ids = &*snapshot.levels[0].1;
+        let mut l1_tables = Vec::new();
+        for sstable_id in l1_sst_ids {
+            let sstable = snapshot
+                .sstables
+                .get(&sstable_id)
+                .expect(&format!("Cannot find sstable with id {}", sstable_id));
+            if !self.range_overlap(lower, upper, sstable.first_key(), sstable.last_key()) {
+                continue;
+            }
+            l1_tables.push(Arc::clone(&sstable));
+        }
+        let l1_iter = match lower {
+            Bound::Included(key) => {
+                SstConcatIterator::create_and_seek_to_key(l1_tables, Key::from_slice(key))?
+            }
+            Bound::Excluded(key) => {
+                let mut iter =
+                    SstConcatIterator::create_and_seek_to_key(l1_tables, Key::from_slice(key))?;
+                if iter.is_valid() && iter.key().raw_ref() == key {
+                    iter.next()?;
+                }
+                iter
+            }
+            Bound::Unbounded => SstConcatIterator::create_and_seek_to_first(l1_tables)?,
+        };
 
+        let iter = TwoMergeIterator::create(memtable_merge_iterator, l0_iter)?;
+        let iter = TwoMergeIterator::create(iter, l1_iter)?;
+        let lsm_iterator = LsmIterator::new(iter, map_bound(upper))?;
         Ok(FusedIterator::new(lsm_iterator))
     }
 

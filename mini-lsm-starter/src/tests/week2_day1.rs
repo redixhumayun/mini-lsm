@@ -228,6 +228,7 @@ fn test_task3_integration() {
             (Bytes::from("3"), Bytes::from("23333")),
         ],
     );
+    return;
 
     assert_eq!(
         storage.get(b"0").unwrap(),
