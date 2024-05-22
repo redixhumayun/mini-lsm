@@ -292,11 +292,14 @@ impl LsmStorageInner {
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
         //  first probe the memtables
-        let state_guard = self.state.read();
+        let snapshot = {
+            let state_guard = self.state.read();
+            Arc::clone(&state_guard)
+        };
         let mut memtables = Vec::new();
-        memtables.push(Arc::clone(&state_guard.memtable));
+        memtables.push(Arc::clone(&snapshot.memtable));
         memtables.extend(
-            state_guard
+            snapshot
                 .imm_memtables
                 .iter()
                 .map(|memtable| Arc::clone(memtable)),
@@ -309,17 +312,10 @@ impl LsmStorageInner {
                 return Ok(Some(value));
             }
         }
-        drop(state_guard);
 
-        //  value not found in memtables, create a merge iterator over the sstables and search through them
-        let snapshot = {
-            let state_guard = self.state.read();
-            Arc::clone(&state_guard)
-        };
-
-        let sstable_ids = &*snapshot.l0_sstables;
+        //  create iterator for l0
         let mut sstable_iterators: Vec<Box<SsTableIterator>> = Vec::new();
-        for sstable_id in sstable_ids {
+        for sstable_id in snapshot.l0_sstables.iter() {
             let sstable = snapshot.sstables.get(&sstable_id).unwrap();
             //  check if the sstable can have the key within its range
             if key < sstable.first_key().as_key_slice().into_inner()
@@ -339,13 +335,35 @@ impl LsmStorageInner {
             )?;
             sstable_iterators.push(Box::new(sstable_iter));
         }
-        let sstable_merge_iterator = MergeIterator::create(sstable_iterators);
-        if sstable_merge_iterator.is_valid()
-            && sstable_merge_iterator.key() == Key::from_slice(key)
-            && !sstable_merge_iterator.value().is_empty()
-        {
-            let value = sstable_merge_iterator.value();
-            return Ok(Some(Bytes::copy_from_slice(value)));
+        let l0_iter = MergeIterator::create(sstable_iterators);
+
+        //  create iterator for l1
+        let mut sstables_l1 = Vec::new();
+        for sstable_id in snapshot.levels[0].1.iter() {
+            let sstable = snapshot
+                .sstables
+                .get(sstable_id)
+                .expect(&format!("Could not find sstable {}", sstable_id));
+            //  if key range excludes this key, skip
+            if Key::from_slice(key) < sstable.first_key().as_key_slice()
+                || Key::from_slice(key) > sstable.last_key().as_key_slice()
+            {
+                continue;
+            }
+            //  check bloom filter for negative
+            if let Some(bloom_filter) = &sstable.bloom {
+                if !bloom_filter.may_contain(farmhash::fingerprint32(key)) {
+                    continue;
+                }
+            }
+            sstables_l1.push(Arc::clone(&sstable));
+        }
+        let l1_iter = SstConcatIterator::create_and_seek_to_key(sstables_l1, Key::from_slice(key))?;
+
+        let iter = TwoMergeIterator::create(l0_iter, l1_iter)?;
+
+        if iter.is_valid() && iter.key() == Key::from_slice(key) && !iter.value().is_empty() {
+            return Ok(Some(Bytes::copy_from_slice(iter.value())));
         }
 
         Ok(None)

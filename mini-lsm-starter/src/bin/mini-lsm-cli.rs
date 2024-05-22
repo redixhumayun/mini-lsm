@@ -63,6 +63,7 @@ impl ReplHandler {
                 println!("{} deleted", key);
             }
             Command::Get { key } => {
+                println!("Received get command");
                 if let Some(value) = self.lsm.get(key.as_bytes())? {
                     println!("{}={:?}", key, value);
                 } else {
