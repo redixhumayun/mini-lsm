@@ -289,6 +289,8 @@ fn main() {
                     storage.snapshot = snapshot;
                     storage.remove(&del);
                     println!("--- After Compaction ---");
+                    println!("The task passed in {:?}", task);
+                    println!("Files to delete {:?}", del);
                     if dump_real_id {
                         storage.dump_real_id(true, false);
                     } else {
