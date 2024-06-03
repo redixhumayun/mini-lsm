@@ -37,6 +37,10 @@ impl SimpleLeveledCompactionController {
     ) -> Option<SimpleLeveledCompactionTask> {
         //  check the l0 trigger
         if snapshot.l0_sstables.len() >= self.options.level0_file_num_compaction_trigger {
+            println!(
+                "compaction triggered at level 0 and 1 with {} in L0",
+                snapshot.l0_sstables.len()
+            );
             return Some(SimpleLeveledCompactionTask {
                 upper_level: None,
                 upper_level_sst_ids: snapshot.l0_sstables.clone(),
@@ -63,6 +67,12 @@ impl SimpleLeveledCompactionController {
                 continue;
             };
             if ratio * 100 < self.options.size_ratio_percent {
+                println!(
+                    "compaction triggered at level {} and level {} with ratio {}",
+                    upper_level + 1,
+                    lower_level + 1,
+                    ratio
+                );
                 //  create a task
                 return Some(SimpleLeveledCompactionTask {
                     upper_level: Some(*level - 1),
