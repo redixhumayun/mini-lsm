@@ -197,6 +197,12 @@ the result written to the level of L3, then L2 will be encountered first during 
 * So far, we have assumed that our SST files use a monotonically increasing id as the file name. Is it okay to use <level>_<begin_key>_<end_key>.sst as the SST file name? What might be the potential problems with that? (You can ask yourself the same question in week 3...)
 What if more than 1 SST at L0 has the same begin and end key because the overlapping ranges haven't been merged yet?
 
+##  Week 2 Day 4
+* What is the estimated write amplification of leveled compaction?
+The write amplification in the worst case is N (number of levels) because it needs to be compacted through all the levels
+
+* What is the estimated read amplification of leveled compaction?
+THe read amplification in the worst case is N (number of levels) because the entry might be in the last SST in the last level.
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
