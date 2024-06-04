@@ -165,7 +165,38 @@ Unsure
 Please no more abstractions and structs
 
 * Some researchers/engineers propose to offload compaction to a remote server or a serverless lambda function. What are the benefits, and what might be the potential challenges and performance impacts of doing remote compaction? (Think of the point when a compaction completes and what happens to the block cache on the next read request...)
-Unsure. raised question on Discord
+Answer by Alex on Discord
+
+The problem is after compaction and the new list of SST files are propagated to the local engine, the reads will now go through the new files, and they are not on the local disk / in the block cache, so it will create a sudden spike in latency to download them from S3 or whatever other places. While in local compaction, the new files are on the disk, so the reads won't be impacted much.
+
+##  Week 2 Day 2
+
+* What is the estimated write amplification of leveled compaction?
+The estimated write amp = N (the number of levels in the tree). Using the formula -> total data written to disk / number of memtables flushed, for every memtable flush, the sstable must be compacted and move through all the levels before reaching the final level
+
+* What is the estimated read amplification of leveled compaction?
+The estimate read amp = N (the number of levels in the tree). Using the formula -> number of I/O operations per get request. Imagine a tree with 4 levels and the point query being satisifed by the last SSTable in the last level. The query must look through all levels in this case.
+
+* Is it correct that a key will only be purged from the LSM tree if the user requests to delete it and it has been compacted in the bottom-most level?
+Not necessarily, the very first compaction on 2 SSTables (one of which contains the key and the other deletes it) will result in a compacted SSTable which does not contain the key.
+
+* Is it a good strategy to periodically do a full compaction on the LSM tree? Why or why not?
+No, because this will unnecessarily increase the write amp of the system.
+
+* Actively choosing some old files/levels to compact even if they do not violate the level amplifier would be a good choice, is it true? (Look at the Lethe paper!)
+Unsure. Need to read paper
+
+* If the storage device can achieve a sustainable 1GB/s write throughput and the write amplification of the LSM tree is 10x, how much throughput can the user get from the LSM key-value interfaces?
+Effective Throughput= Write Amplification / Sustainable Write Throughput
+​Effective Throughput = 1 GB/s / 10 = 0.1 GB/s = 100 MBPs
+
+* Can you merge L1 and L3 directly if there are SST files in L2? Does it still produce correct result?
+No, it might not because the order of writes might change. For instance if there is a delete that is present in L1 for a key that was written in L2 but L1 and L3 are compacted and
+the result written to the level of L3, then L2 will be encountered first during a get query and the key will still be returned even though a delete request was sent by the client.
+
+* So far, we have assumed that our SST files use a monotonically increasing id as the file name. Is it okay to use <level>_<begin_key>_<end_key>.sst as the SST file name? What might be the potential problems with that? (You can ask yourself the same question in week 3...)
+What if more than 1 SST at L0 has the same begin and end key because the overlapping ranges haven't been merged yet?
+
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
