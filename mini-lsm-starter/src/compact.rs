@@ -436,14 +436,17 @@ impl LsmStorageInner {
     }
 
     fn trigger_compaction(&self) -> Result<()> {
+        println!("called trigger_compaction");
         let snapshot = {
             let state = self.state.read();
             state.clone()
         };
+        println!("going to call generate_compaction_task");
         let task = self
             .compaction_controller
             .generate_compaction_task(&snapshot);
         let Some(task) = task else {
+            println!("exiting trigger_compaction early");
             return Ok(());
         };
         self.dump_structure();
@@ -460,7 +463,6 @@ impl LsmStorageInner {
         //  remove old files from state and file system
         //  add new files to the state
         //  replace state
-        println!("waiting to acquire lock");
         let _state_lock = self.state_lock.lock();
         for sstable_id in &sstable_ids_to_remove {
             let sst = new_state.sstables.remove(&sstable_id);
@@ -496,7 +498,9 @@ impl LsmStorageInner {
             let handle = std::thread::spawn(move || {
                 let ticker = crossbeam_channel::tick(Duration::from_millis(50));
                 loop {
+                    println!("compaction thread");
                     crossbeam_channel::select! {
+                        recv(ticker) -> _ => return,
                         recv(ticker) -> _ => if let Err(e) = this.trigger_compaction() {
                             eprintln!("compaction failed: {}", e);
                         },

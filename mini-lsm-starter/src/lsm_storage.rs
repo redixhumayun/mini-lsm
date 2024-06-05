@@ -376,17 +376,17 @@ impl LsmStorageInner {
     }
 
     /// Put a key-value pair into the storage by writing into the current memtable.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        let state = self.state.read();
-        let result = state.memtable.put(_key, _value);
-        if state.memtable.approximate_size() >= self.options.target_sst_size {
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        let memtable_size = {
+            let state = self.state.read();
+            state.memtable.put(key, value)?;
+            state.memtable.approximate_size()
+        };
+        if memtable_size >= self.options.target_sst_size {
             let state_lock = self.state_lock.lock();
-            if state.memtable.approximate_size() >= self.options.target_sst_size {
-                drop(state);
-                self.force_freeze_memtable(&state_lock)?
-            }
+            self.force_freeze_memtable(&state_lock)?;
         }
-        result
+        Ok(())
     }
 
     /// Remove a key from the storage by writing an empty value.
@@ -425,9 +425,10 @@ impl LsmStorageInner {
 
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
-        let state_read = self.state.read();
-        let current_memtable = Arc::clone(&state_read.memtable);
-        drop(state_read);
+        let current_memtable = {
+            let state_read = self.state.read();
+            Arc::clone(&state_read.memtable)
+        };
 
         let new_memtable = Arc::new(MemTable::create(self.next_sst_id()));
 

@@ -51,24 +51,28 @@ impl LeveledCompactionController {
                 size
             })
             .collect();
+        let base_level_size_bytes = (self.options.base_level_size_mb * 1024 * 1024) as u64;
         let base_level_actual_size = *actual_sizes.last().unwrap();
-        let base_level_size_bytes = self.options.base_level_size_mb * 1024 * 1024;
 
         //  calculate the target size for each level
         let mut target_sizes = vec![0; snapshot.levels.len()];
         if let Some(last) = target_sizes.last_mut() {
-            *last = base_level_size_bytes as u64;
+            if base_level_actual_size < base_level_size_bytes {
+                *last = base_level_size_bytes as u64;
+            } else {
+                *last = base_level_actual_size as u64;
+            }
         }
-        if base_level_actual_size <= base_level_size_bytes.try_into().unwrap() {
+        if base_level_actual_size <= base_level_size_bytes {
             return LevelSizes {
                 actual_sizes,
                 target_sizes,
             };
         }
-        for i in (0..target_sizes.len() - 2).rev() {
+        for i in (0..target_sizes.len() - 1).rev() {
             let target_size = target_sizes[i + 1] / self.options.level_size_multiplier as u64;
             target_sizes[i] = target_size;
-            if target_size < self.options.base_level_size_mb.try_into().unwrap() {
+            if target_size < base_level_size_bytes {
                 break;
             }
         }
@@ -112,8 +116,22 @@ impl LeveledCompactionController {
         &self,
         snapshot: &LsmStorageState,
     ) -> Option<LeveledCompactionTask> {
+        println!("generating compaction task");
         //  Get the actual size and target size for each level
         let level_sizes = self.get_level_sizes(snapshot);
+        println!(
+            "The target level sizes are {:?}, real_level_sizes are {:?}",
+            level_sizes
+                .target_sizes
+                .iter()
+                .map(|x| format!("{:.3}MB", *x as f64 / 1024.0 / 1024.0))
+                .collect::<Vec<_>>(),
+            level_sizes
+                .actual_sizes
+                .iter()
+                .map(|x| format!("{:.3}MB", *x as f64 / 1024.0 / 1024.0))
+                .collect::<Vec<_>>(),
+        );
 
         //  Decide on the base level
         //  Iterate over each level and pick the first level with a target size greater than 0
@@ -128,11 +146,6 @@ impl LeveledCompactionController {
             result
         };
 
-        if base_level == 0 {
-            println!("could not find any level with a target size > 0");
-            return None;
-        }
-
         /*
         Decide what level needs to be compacted
         First, check the L0 level
@@ -142,7 +155,6 @@ impl LeveledCompactionController {
             println!("flush L0 SST to base level {}", base_level);
             let overlapping_ssts =
                 self.find_overlapping_ssts(snapshot, &snapshot.l0_sstables, base_level - 1);
-            println!("The overlapping ssts are {:?}", overlapping_ssts);
             return Some(LeveledCompactionTask {
                 upper_level: None,
                 upper_level_sst_ids: snapshot.l0_sstables.clone(),
@@ -153,13 +165,13 @@ impl LeveledCompactionController {
         }
 
         //  check which level has the highest ratio and compact that
-        let mut max = (0, 0); //  level will be 1 based when stored here
+        let mut max = (0, 1 as f64); //  (1 based level, initial ratio of 1)
         for (level, _) in &snapshot.levels {
             let denom = level_sizes.target_sizes[level - 1];
             if denom == 0 {
                 continue;
             }
-            let ratio = level_sizes.actual_sizes[level - 1] / denom;
+            let ratio = level_sizes.actual_sizes[level - 1] as f64 / denom as f64;
             if ratio > max.1 {
                 max = (*level, ratio);
             }
@@ -167,11 +179,6 @@ impl LeveledCompactionController {
 
         if max.0 == 0 {
             println!("None of the levels need to be compacted because all their ratios are 0");
-            return None;
-        }
-
-        if max.0 == base_level {
-            println!("The base level cannot be compacted against itself");
             return None;
         }
 
@@ -186,15 +193,15 @@ impl LeveledCompactionController {
             .min()
             .unwrap();
         let overlapping_ssts =
-            self.find_overlapping_ssts(snapshot, &[*oldest_sst_id], base_level - 1);
+            self.find_overlapping_ssts(snapshot, &[*oldest_sst_id], level_to_compact);
 
         //  create and return the task
         return Some(LeveledCompactionTask {
             upper_level: Some(level_to_compact),
             upper_level_sst_ids: vec![*oldest_sst_id],
-            lower_level: base_level,
+            lower_level: level_to_compact + 1,
             lower_level_sst_ids: overlapping_ssts,
-            is_lower_level_bottom_level: snapshot.levels.len() == base_level,
+            is_lower_level_bottom_level: snapshot.levels.len() == level_to_compact + 1,
         });
     }
 
