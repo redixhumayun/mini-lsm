@@ -202,7 +202,20 @@ What if more than 1 SST at L0 has the same begin and end key because the overlap
 The write amplification in the worst case is N (number of levels) because it needs to be compacted through all the levels
 
 * What is the estimated read amplification of leveled compaction?
-THe read amplification in the worst case is N (number of levels) because the entry might be in the last SST in the last level.
+The read amplification in the worst case is N (number of levels) because the entry might be in the last SST in the last level.
+
+* What happens if compaction speed cannot keep up with the SST flushes?
+Typically, the system would experience higher space and read amp. Space amp because more space is taken at the higher levels. Read amp because more SST's would be created and not compacted (yet) which need to be searched through.
+
+* Consider the case that the upper level has two tables of [100, 200], [201, 300] and the lower level has [50, 150], [151, 250], [251, 350]. In this case, do you still want to compact one file in the upper level at a time? Why?
+No, it makes sense to compact all the files together at once because otherwise only the first file from the top level will be compacted with the first two files from the bottom level. This will create the following
+
+```
+upper -> [201,300]
+lower -> [50, 250], [251, 300]
+```
+
+and now when running compaction again, all 3 files will need to be compacted. This increases the write amplification. Instead, it would be better to compact everything at once.
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
