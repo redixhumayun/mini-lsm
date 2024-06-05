@@ -436,52 +436,51 @@ impl LsmStorageInner {
     }
 
     fn trigger_compaction(&self) -> Result<()> {
-        println!("called trigger_compaction");
-        let snapshot = {
+        let mut snapshot = {
             let state = self.state.read();
-            state.clone()
+            state.as_ref().clone()
         };
-        println!("going to call generate_compaction_task");
         let task = self
             .compaction_controller
             .generate_compaction_task(&snapshot);
         let Some(task) = task else {
-            println!("exiting trigger_compaction early");
             return Ok(());
         };
         self.dump_structure();
         println!("created a compaction task {:?}", task);
         let sstables_to_add = self.compact(&task)?;
-        let output: Vec<usize> = sstables_to_add
-            .iter()
-            .map(|sstable| sstable.sst_id())
-            .collect();
+        let table_ids_to_add: Vec<usize> = {
+            let _state_lock = self.state_lock.lock();
+            let mut table_ids_to_add = Vec::with_capacity(sstables_to_add.len());
+            for sstable in sstables_to_add {
+                table_ids_to_add.push(sstable.sst_id());
+                snapshot.sstables.insert(sstable.sst_id(), sstable);
+            }
+            table_ids_to_add
+        };
+
         let (mut new_state, sstable_ids_to_remove) = self
             .compaction_controller
-            .apply_compaction_result(&snapshot, &task, &output);
+            .apply_compaction_result(&snapshot, &task, &table_ids_to_add);
 
-        //  remove old files from state and file system
-        //  add new files to the state
-        //  replace state
-        let _state_lock = self.state_lock.lock();
-        for sstable_id in &sstable_ids_to_remove {
-            let sst = new_state.sstables.remove(&sstable_id);
-            assert!(sst.is_some());
-            std::fs::remove_file(self.path_of_sst(*sstable_id))?;
+        {
+            let _state_lock = self.state_lock.lock();
+            for sstable_id in &sstable_ids_to_remove {
+                let sst = new_state.sstables.remove(&sstable_id);
+                assert!(sst.is_some());
+            }
         }
-        for sstable in &sstables_to_add {
-            new_state.sstables.insert(sstable.sst_id(), sstable.clone());
+        {
+            let mut state = self.state.write();
+            *state = Arc::new(new_state);
         }
-        let mut state = self.state.write();
-        *state = Arc::new(new_state);
         println!(
             "compaction finished -> files added {:?}, files removed {:?}",
-            sstables_to_add
-                .iter()
-                .map(|sst| sst.sst_id())
-                .collect::<Vec<_>>(),
-            sstable_ids_to_remove
+            table_ids_to_add, sstable_ids_to_remove
         );
+        for sstable_id in &sstable_ids_to_remove {
+            std::fs::remove_file(self.path_of_sst(*sstable_id))?;
+        }
 
         Ok(())
     }
@@ -495,19 +494,19 @@ impl LsmStorageInner {
         | CompactionOptions::Tiered(_) = self.options.compaction_options
         {
             let this = self.clone();
-            let handle = std::thread::spawn(move || {
-                let ticker = crossbeam_channel::tick(Duration::from_millis(50));
-                loop {
-                    println!("compaction thread");
-                    crossbeam_channel::select! {
-                        recv(ticker) -> _ => return,
-                        recv(ticker) -> _ => if let Err(e) = this.trigger_compaction() {
-                            eprintln!("compaction failed: {}", e);
-                        },
-                        recv(rx) -> _ => return
+            let handle = std::thread::Builder::new()
+                .name("compaction_thread".into())
+                .spawn(move || {
+                    let ticker = crossbeam_channel::tick(Duration::from_millis(50));
+                    loop {
+                        crossbeam_channel::select! {
+                            recv(ticker) -> _ => if let Err(e) = this.trigger_compaction() {
+                                eprintln!("compaction failed: {}", e);
+                            },
+                            recv(rx) -> _ => return
+                        }
                     }
-                }
-            });
+                })?;
             return Ok(Some(handle));
         }
         Ok(None)

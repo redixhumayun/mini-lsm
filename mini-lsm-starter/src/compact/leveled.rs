@@ -247,9 +247,15 @@ impl LeveledCompactionController {
             snapshot
                 .sstables
                 .get(x)
-                .unwrap()
+                .expect(&format!("unable to get sstable {}", x))
                 .first_key()
-                .cmp(snapshot.sstables.get(y).unwrap().first_key())
+                .cmp(
+                    snapshot
+                        .sstables
+                        .get(y)
+                        .expect(&format!("unable to get sstable {}", y))
+                        .first_key(),
+                )
         });
         snapshot_clone.levels[task.lower_level - 1] = lower_level.clone();
         (

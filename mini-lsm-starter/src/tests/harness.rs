@@ -235,7 +235,6 @@ pub fn compaction_bench(storage: Arc<MiniLsm>) {
             max_key = max_key.max(i);
         }
     }
-    println!("Done inserting keys");
 
     std::thread::sleep(Duration::from_secs(1)); // wait until all memtables flush
     while {

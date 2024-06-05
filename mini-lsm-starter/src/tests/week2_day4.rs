@@ -1,5 +1,3 @@
-use std::{sync::Arc, thread};
-
 use tempfile::tempdir;
 
 use crate::{
@@ -11,7 +9,6 @@ use super::harness::{check_compaction_ratio, compaction_bench};
 
 #[test]
 fn test_integration() {
-    println!("Running week 2 day 4 test");
     let dir = tempdir().unwrap();
     let storage = MiniLsm::open(
         &dir,

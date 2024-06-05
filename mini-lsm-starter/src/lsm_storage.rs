@@ -469,7 +469,6 @@ impl LsmStorageInner {
             snapshot.sstables.insert(oldest_memtable.id(), sst);
             *state_guard = Arc::new(snapshot);
         }
-
         Ok(())
     }
 
