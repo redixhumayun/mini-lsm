@@ -21,6 +21,7 @@ use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
 use crate::key;
 use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
+use crate::manifest::ManifestRecord;
 use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,6 +69,8 @@ impl CompactionController {
         }
     }
 
+    /// This method accepts a compaction task and the set of SST's that were produced as a result of running that compaction
+    /// It will take the SST's and the current state and produce a new state and the SST's that need to be removed
     pub fn apply_compaction_result(
         &self,
         snapshot: &LsmStorageState,
@@ -155,6 +158,9 @@ impl LsmStorageInner {
         Ok(sstables)
     }
 
+    /// This method will take the compaction task and read all SST's that need to be compacted into memory
+    /// It will then build iterators over the SST's and build out a new set of SST's with the results of iteration and return the new SST's
+    /// This method does not modify the state
     fn compact(&self, task: &CompactionTask) -> Result<Vec<Arc<SsTable>>> {
         let snapshot = {
             let state = self.state.read();
@@ -435,6 +441,9 @@ impl LsmStorageInner {
         Ok(())
     }
 
+    /// This method is called by the compaction thread and will orchestrate the generation of a compaction task,
+    /// run the compaction task to get the id's that need to be added and then apply the compaction on the state
+    /// to get the id's that need to be removed
     fn trigger_compaction(&self) -> Result<()> {
         let mut snapshot = {
             let state = self.state.read();
@@ -464,16 +473,27 @@ impl LsmStorageInner {
             .apply_compaction_result(&snapshot, &task, &table_ids_to_add);
 
         {
-            let _state_lock = self.state_lock.lock();
+            let state_lock = self.state_lock.lock();
             for sstable_id in &sstable_ids_to_remove {
                 let sst = new_state.sstables.remove(&sstable_id);
                 assert!(sst.is_some());
             }
+            {
+                let mut state = self.state.write();
+                *state = Arc::new(new_state);
+            }
+            self.sync_dir()?;
+            self.manifest
+                .as_ref()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("manifest handle not found while writing compaction")
+                })?
+                .add_record(
+                    &state_lock,
+                    ManifestRecord::Compaction(task, table_ids_to_add.clone()),
+                )?;
         }
-        {
-            let mut state = self.state.write();
-            *state = Arc::new(new_state);
-        }
+
         println!(
             "compaction finished -> files added {:?}, files removed {:?}",
             table_ids_to_add, sstable_ids_to_remove

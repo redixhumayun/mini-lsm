@@ -116,22 +116,8 @@ impl LeveledCompactionController {
         &self,
         snapshot: &LsmStorageState,
     ) -> Option<LeveledCompactionTask> {
-        println!("generating compaction task");
         //  Get the actual size and target size for each level
         let level_sizes = self.get_level_sizes(snapshot);
-        println!(
-            "The target level sizes are {:?}, real_level_sizes are {:?}",
-            level_sizes
-                .target_sizes
-                .iter()
-                .map(|x| format!("{:.3}MB", *x as f64 / 1024.0 / 1024.0))
-                .collect::<Vec<_>>(),
-            level_sizes
-                .actual_sizes
-                .iter()
-                .map(|x| format!("{:.3}MB", *x as f64 / 1024.0 / 1024.0))
-                .collect::<Vec<_>>(),
-        );
 
         //  Decide on the base level
         //  Iterate over each level and pick the first level with a target size greater than 0
@@ -178,9 +164,22 @@ impl LeveledCompactionController {
         }
 
         if max.0 == 0 {
-            println!("None of the levels need to be compacted because all their ratios are 0");
             return None;
         }
+
+        println!(
+            "The target level sizes are {:?}, real_level_sizes are {:?}",
+            level_sizes
+                .target_sizes
+                .iter()
+                .map(|x| format!("{:.3}MB", *x as f64 / 1024.0 / 1024.0))
+                .collect::<Vec<_>>(),
+            level_sizes
+                .actual_sizes
+                .iter()
+                .map(|x| format!("{:.3}MB", *x as f64 / 1024.0 / 1024.0))
+                .collect::<Vec<_>>(),
+        );
 
         //  find overlapping tables to compact
         let level_to_compact = max.0;

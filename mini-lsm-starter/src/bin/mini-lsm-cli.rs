@@ -314,6 +314,7 @@ impl ReplBuilder {
 }
 
 fn main() -> Result<()> {
+    println!("running mini lsm cli");
     let args = Args::parse();
     let lsm = MiniLsm::open(
         args.path,
