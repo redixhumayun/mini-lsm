@@ -29,18 +29,24 @@ pub struct MemTable {
 
 impl fmt::Debug for MemTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let first_key = self
-            .map
-            .front()
-            .map(|entry| String::from_utf8_lossy(entry.key()).into_owned());
-        let last_key = self
-            .map
-            .back()
-            .map(|entry| String::from_utf8_lossy(entry.key()).into_owned());
+        let first_entry = self.map.front();
+        let last_entry = self.map.back();
 
-        match (first_key, last_key) {
+        match (first_entry, last_entry) {
             (Some(first), Some(last)) => {
-                write!(f, "Key range {} -> {}", first, last)
+                let first_key = String::from_utf8_lossy(first.key()).into_owned();
+                let first_value = String::from_utf8_lossy(first.value());
+                let last_key = String::from_utf8_lossy(last.key()).into_owned();
+                let last_value = String::from_utf8_lossy(last.value());
+
+                let trimmed_first_value = trim_to_last_4(&first_value);
+                let trimmed_last_value = trim_to_last_4(&last_value);
+
+                write!(
+                    f,
+                    "Key range: {} -> {} | Value range: {} -> {}",
+                    first_key, last_key, trimmed_first_value, trimmed_last_value
+                )
             }
             _ => {
                 write!(f, "Memtable empty")
@@ -96,8 +102,8 @@ impl MemTable {
     }
 
     /// Get a value by key.
-    pub fn get(&self, _key: &[u8]) -> Option<Bytes> {
-        match self.map.get(_key) {
+    pub fn get(&self, key: &[u8]) -> Option<Bytes> {
+        match self.map.get(key) {
             Some(entry) => Option::Some(entry.value().clone()),
             None => Option::None,
         }
@@ -107,13 +113,13 @@ impl MemTable {
     ///
     /// In week 1, day 1, simply put the key-value pair into the skipmap.
     /// In week 2, day 6, also flush the data to WAL.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
         self.map
-            .insert(Bytes::from(_key.to_vec()), Bytes::from(_value.to_vec()));
+            .insert(Bytes::from(key.to_vec()), Bytes::from(value.to_vec()));
         let current_size = self
             .approximate_size
             .load(std::sync::atomic::Ordering::Relaxed);
-        let key_value_size = _key.len() + _value.len();
+        let key_value_size = key.len() + value.len();
         let new_size = current_size + key_value_size;
         self.approximate_size
             .store(new_size, std::sync::atomic::Ordering::Relaxed);
@@ -196,15 +202,24 @@ impl fmt::Debug for MemTableIterator {
             (Some(first), Some(last)) => {
                 let key = self.with_item(|item| String::from_utf8_lossy(&item.0));
                 let value = self.with_item(|item| String::from_utf8_lossy(&item.1));
+                let trimmed_value = trim_to_last_4(&value);
                 write!(f, "Memtable Iterator {{ ")?;
                 write!(f, "Key range {} -> {}, ", first, last)?;
-                write!(f, "Key: {}, Value: {}", key, value)?;
+                write!(f, "Key: {}, Value: {}", key, trimmed_value)?;
                 write!(f, " }} ")
             }
             _ => {
                 write!(f, "Memtable empty")
             }
         }
+    }
+}
+
+fn trim_to_last_4(value: &str) -> String {
+    if value.len() <= 4 {
+        value.to_string()
+    } else {
+        value[value.len() - 4..].to_string()
     }
 }
 

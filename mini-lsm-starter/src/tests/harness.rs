@@ -157,11 +157,6 @@ where
     I: for<'a> StorageIterator<KeyType<'a> = &'a [u8]>,
 {
     for (k, v) in expected {
-        let key = unsafe { String::from_utf8_unchecked(k.to_vec()) };
-        if key == "0000008736" {
-            let _n = key;
-            println!("The iter {:?}", iter);
-        }
         assert!(iter.is_valid());
         assert_eq!(
             k,
@@ -229,14 +224,38 @@ pub fn sync(storage: &LsmStorageInner) {
     storage.force_flush_next_imm_memtable().unwrap();
 }
 
+pub fn simple_bench(storage: Arc<MiniLsm>) {
+    let key_map = BTreeMap::<usize, usize>::new();
+    let gen_key = |i| format!("{:010}", i); // 10B
+    let gen_value = |i| format!("{:0110}", i); // 110B
+    for i in 0..50000 {
+        let key = gen_key(i);
+        let version = key_map.get(&i).copied().unwrap_or_default() + 1;
+        let value = gen_value(version);
+        storage.put(key.as_bytes(), value.as_bytes()).unwrap();
+    }
+
+    std::thread::sleep(Duration::from_secs(2));
+    for i in 0..50000 {
+        let key = gen_key(i);
+        let value = storage.get(key.as_bytes()).unwrap();
+        assert!(value.is_some(), "could not find key {}", key);
+    }
+}
+
 pub fn compaction_bench(storage: Arc<MiniLsm>) {
     let mut key_map = BTreeMap::<usize, usize>::new();
     let gen_key = |i| format!("{:010}", i); // 10B
     let gen_value = |i| format!("{:0110}", i); // 110B
     let mut max_key = 0;
     let overlaps = if TS_ENABLED { 10000 } else { 20000 };
-    for iter in 0..1 {
+    for iter in 0..3 {
         let range_begin = iter * 5000;
+        println!(
+            "generating range {} -> {}",
+            range_begin,
+            range_begin + overlaps
+        );
         for i in range_begin..(range_begin + overlaps) {
             // 120B per key, 4MB data populated
             let key: String = gen_key(i);
@@ -248,9 +267,7 @@ pub fn compaction_bench(storage: Arc<MiniLsm>) {
         }
     }
 
-    println!("The state after insertion {:?}", storage.inner.state);
-
-    std::thread::sleep(Duration::from_secs(1)); // wait until all memtables flush
+    std::thread::sleep(Duration::from_secs(3)); // wait until all memtables flush
     while {
         let snapshot = storage.inner.state.read();
         !snapshot.imm_memtables.is_empty()
@@ -270,28 +287,37 @@ pub fn compaction_bench(storage: Arc<MiniLsm>) {
         println!("waiting for compaction to converge");
     }
 
-    println!(
-        "The state after compaction converges {:?}",
-        storage.inner.state
-    );
+    let snap = storage.inner.state.read().clone();
+    println!("the snapshot {:?}", snap);
+    let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+    println!("the iter {:?}", iter);
 
     let mut expected_key_value_pairs = Vec::new();
     for i in 0..(max_key + 40000) {
         let key = gen_key(i);
+        if key == "0000022434" {
+            println!("stop here");
+            println!(
+                "the memtable at this point {:?}",
+                storage.inner.state.read().memtable
+            );
+        }
         let value = storage.get(key.as_bytes()).unwrap();
         if let Some(val) = key_map.get(&i) {
             let expected_value = gen_value(*val);
-            assert_eq!(value, Some(Bytes::from(expected_value.clone())));
+            assert_eq!(
+                value,
+                Some(Bytes::from(expected_value.clone())),
+                "Assertion failed for key: {}",
+                key
+            );
             expected_key_value_pairs.push((Bytes::from(key), Bytes::from(expected_value)));
         } else {
             assert!(value.is_none());
         }
     }
 
-    check_lsm_iter_result_by_key(
-        &mut storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap(),
-        expected_key_value_pairs,
-    );
+    check_lsm_iter_result_by_key(&mut iter, expected_key_value_pairs);
 
     storage.dump_structure();
 
