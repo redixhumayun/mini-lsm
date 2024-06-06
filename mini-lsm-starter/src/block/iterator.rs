@@ -1,3 +1,4 @@
+use core::fmt;
 use std::sync::Arc;
 
 use bytes::Buf;
@@ -18,6 +19,19 @@ pub struct BlockIterator {
     idx: usize,
     /// The first key in the block
     first_key: KeyVec,
+}
+
+impl fmt::Debug for BlockIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Block Iterator {{ ")?;
+        write!(
+            f,
+            "current key: {}, index: {}",
+            String::from_utf8_lossy(self.key.raw_ref()),
+            self.idx
+        )?;
+        write!(f, " }} ")
+    }
 }
 
 impl BlockIterator {

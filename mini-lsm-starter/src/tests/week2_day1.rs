@@ -138,7 +138,7 @@ fn test_task1_full_compaction() {
 fn generate_concat_sst(
     start_key: usize,
     end_key: usize,
-    dir: impl AsRef<Path>,
+    dir: &impl AsRef<Path>,
     id: usize,
 ) -> SsTable {
     let mut builder = SsTableBuilder::new(128);
@@ -154,6 +154,20 @@ fn generate_concat_sst(
 }
 
 #[test]
+fn test_task2_concat_iterator_simple_empty_sstabels() {
+    let iter = SstConcatIterator::create_and_seek_to_first(Vec::new()).unwrap();
+    assert!(!iter.is_valid());
+}
+
+#[test]
+fn test_task2_concat_iterator_simple_single_sstable() {
+    let dir = tempdir().unwrap();
+    let sstable = generate_concat_sst(0, 10, &dir.path(), 0);
+    let iter = SstConcatIterator::create_and_seek_to_first(vec![Arc::new(sstable)]).unwrap();
+    assert!(iter.is_valid());
+}
+
+#[test]
 fn test_task2_concat_iterator() {
     let dir = tempdir().unwrap();
     let mut sstables = Vec::new();
@@ -161,7 +175,7 @@ fn test_task2_concat_iterator() {
         sstables.push(Arc::new(generate_concat_sst(
             i * 10,
             (i + 1) * 10,
-            dir.path(),
+            &dir.path(),
             i,
         )));
     }
@@ -219,8 +233,9 @@ fn test_task3_integration() {
     assert!(storage.state.read().l0_sstables.is_empty());
     assert!(!storage.state.read().levels[0].1.is_empty());
 
+    let iter = &mut storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
     check_lsm_iter_result_by_key(
-        &mut storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap(),
+        iter,
         vec![
             (Bytes::from("0"), Bytes::from("2333333")),
             (Bytes::from("00"), Bytes::from("2333")),
@@ -248,4 +263,25 @@ fn test_task3_integration() {
     assert_eq!(storage.get(b"4").unwrap(), None);
     assert_eq!(storage.get(b"--").unwrap(), None);
     assert_eq!(storage.get(b"555").unwrap(), None);
+}
+
+#[test]
+fn test_task3_multiple_sstables() {
+    let dir = tempdir().unwrap();
+    let sst1 = generate_concat_sst(0, 4, &dir.path(), 0);
+    let sst2 = generate_concat_sst(4, 7, &dir.path(), 1);
+    let mut iter =
+        SstConcatIterator::create_and_seek_to_first(vec![Arc::new(sst1), Arc::new(sst2)]).unwrap();
+    check_iter_result_by_key(
+        &mut iter,
+        vec![
+            (Bytes::from_static(b"00000"), Bytes::from_static(b"test")),
+            (Bytes::from_static(b"00001"), Bytes::from_static(b"test")),
+            (Bytes::from_static(b"00002"), Bytes::from_static(b"test")),
+            (Bytes::from_static(b"00003"), Bytes::from_static(b"test")),
+            (Bytes::from_static(b"00004"), Bytes::from_static(b"test")),
+            (Bytes::from_static(b"00005"), Bytes::from_static(b"test")),
+            (Bytes::from_static(b"00006"), Bytes::from_static(b"test")),
+        ],
+    )
 }

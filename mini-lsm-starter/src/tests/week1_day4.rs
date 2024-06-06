@@ -116,7 +116,6 @@ fn test_sst_iterator_simple() {
             as_bytes(&value_of(i)),
             as_bytes(value)
         );
-        iter.print();
         iter.next().unwrap();
     }
 }

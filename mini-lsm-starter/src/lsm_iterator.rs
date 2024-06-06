@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     io::{self, ErrorKind},
     ops::Bound,
@@ -17,8 +18,8 @@ use crate::{
 
 /// Represents the internal type for an LSM iterator. This type will be changed across the tutorial for multiple times.
 type LsmIteratorInner = TwoMergeIterator<
-    TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<SsTableIterator>>,
-    MergeIterator<SstConcatIterator>,
+    TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<SsTableIterator>>, //  memtable and l0
+    MergeIterator<SstConcatIterator>, //  l1 onwards
 >;
 
 pub struct LsmIterator {
@@ -72,6 +73,12 @@ impl LsmIterator {
     }
 }
 
+impl fmt::Debug for LsmIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "LsmIterator {{ {:?} }}", self.inner)
+    }
+}
+
 impl StorageIterator for LsmIterator {
     type KeyType<'a> = &'a [u8];
 
@@ -115,10 +122,6 @@ impl StorageIterator for LsmIterator {
     fn num_active_iterators(&self) -> usize {
         self.inner.num_active_iterators()
     }
-
-    fn print(&self) {
-        self.inner.print();
-    }
 }
 
 /// A wrapper around existing iterator, will prevent users from calling `next` when the iterator is
@@ -135,6 +138,12 @@ impl<I: StorageIterator> FusedIterator<I> {
             iter,
             has_errored: false,
         }
+    }
+}
+
+impl<I: StorageIterator> fmt::Debug for FusedIterator<I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "FusedIterator {{ {:?} }}", self.iter)
     }
 }
 
@@ -174,9 +183,5 @@ impl<I: StorageIterator> StorageIterator for FusedIterator<I> {
 
     fn num_active_iterators(&self) -> usize {
         self.iter.num_active_iterators()
-    }
-
-    fn print(&self) {
-        self.iter.print();
     }
 }

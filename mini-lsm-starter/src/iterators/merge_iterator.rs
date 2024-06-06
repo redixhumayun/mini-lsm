@@ -1,3 +1,4 @@
+use core::fmt;
 use std::cmp::{self};
 use std::collections::binary_heap::PeekMut;
 use std::collections::BinaryHeap;
@@ -8,6 +9,7 @@ use crate::key::KeySlice;
 
 use super::StorageIterator;
 
+#[derive(Debug)]
 struct HeapWrapper<I: StorageIterator>(pub usize, pub Box<I>);
 
 impl<I: StorageIterator> PartialEq for HeapWrapper<I> {
@@ -41,6 +43,14 @@ impl<I: StorageIterator> Ord for HeapWrapper<I> {
 pub struct MergeIterator<I: StorageIterator> {
     iters: BinaryHeap<HeapWrapper<I>>,
     current: Option<HeapWrapper<I>>,
+}
+
+impl<I: StorageIterator> fmt::Debug for MergeIterator<I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Merge iterator {{ ")?;
+        write!(f, "iters: {:?}, current: {:?}", self.iters, self.current)?;
+        write!(f, " }} ")
+    }
 }
 
 impl<I: StorageIterator> MergeIterator<I> {
@@ -151,43 +161,5 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
             .map(|iter| iter.1.num_active_iterators())
             .sum();
         heap_active_iters + current_active_iters
-    }
-
-    /// Prints the current state of the MergeIterator, including the active iterator and the state of iterators in the heap.
-    fn print(&self) {
-        let sep = "-".repeat(10);
-        println!("{} {} {}\n", sep, format!("{:^25}", "Merge Iterator"), sep);
-
-        // Print the current active iterator's state
-        if let Some(current) = &self.current {
-            if current.1.is_valid() {
-                println!("Current Iterator (Index {}):", current.0);
-                current.1.print();
-            } else {
-                println!("Active Iterator (Index {}) is invalid", current.0);
-            }
-        } else {
-            println!("No active iterator");
-        }
-
-        // Print the state of iterators in the heap
-        println!();
-        println!("Iterators in Heap:");
-        for heap_wrapper in self.iters.iter() {
-            let valid_status = if heap_wrapper.1.is_valid() {
-                "Valid"
-            } else {
-                "Invalid"
-            };
-            println!("Iterator Index {}: {}", heap_wrapper.0, valid_status);
-            heap_wrapper.1.print();
-        }
-
-        println!(
-            "{} {} {}",
-            sep,
-            format!("{:^25}", "End Merge Iterator"),
-            sep
-        );
     }
 }

@@ -1,5 +1,6 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
+use core::fmt;
 use std::ops::Bound;
 use std::path::Path;
 use std::sync::atomic::AtomicUsize;
@@ -24,6 +25,28 @@ pub struct MemTable {
     wal: Option<Wal>,
     id: usize,
     approximate_size: Arc<AtomicUsize>,
+}
+
+impl fmt::Debug for MemTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first_key = self
+            .map
+            .front()
+            .map(|entry| String::from_utf8_lossy(entry.key()).into_owned());
+        let last_key = self
+            .map
+            .back()
+            .map(|entry| String::from_utf8_lossy(entry.key()).into_owned());
+
+        match (first_key, last_key) {
+            (Some(first), Some(last)) => {
+                write!(f, "Key range {} -> {}", first, last)
+            }
+            _ => {
+                write!(f, "Memtable empty")
+            }
+        }
+    }
 }
 
 /// Create a bound of `Bytes` from a bound of `&[u8]`.
@@ -161,6 +184,30 @@ pub struct MemTableIterator {
     item: (Bytes, Bytes),
 }
 
+impl fmt::Debug for MemTableIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first_key = self
+            .with_map(|map| map.front())
+            .map(|entry| String::from_utf8_lossy(entry.key().as_ref()).into_owned());
+        let last_key = self
+            .with_map(|map| map.back())
+            .map(|entry| String::from_utf8_lossy(entry.key().as_ref()).into_owned());
+        match (first_key, last_key) {
+            (Some(first), Some(last)) => {
+                let key = self.with_item(|item| String::from_utf8_lossy(&item.0));
+                let value = self.with_item(|item| String::from_utf8_lossy(&item.1));
+                write!(f, "Memtable Iterator {{ ")?;
+                write!(f, "Key range {} -> {}, ", first, last)?;
+                write!(f, "Key: {}, Value: {}", key, value)?;
+                write!(f, " }} ")
+            }
+            _ => {
+                write!(f, "Memtable empty")
+            }
+        }
+    }
+}
+
 impl StorageIterator for MemTableIterator {
     type KeyType<'a> = KeySlice<'a>;
 
@@ -185,36 +232,5 @@ impl StorageIterator for MemTableIterator {
         });
         self.with_item_mut(|item| *item = next_entry);
         Ok(())
-    }
-
-    /// Prints the current key-value pair to the console.
-    fn print(&self) {
-        let sep = "-".repeat(10);
-        println!("{} {} {}", sep, format!("{:^25}", "Memtable Iterator"), sep);
-        if self.is_valid() {
-            let key = self.with_item(|item| &item.0);
-            let value = self.with_item(|item| &item.1);
-
-            // Attempt to convert both key and value to UTF-8 strings for readable printing.
-            let key_str = match std::str::from_utf8(key) {
-                Ok(s) => s.to_string(),
-                Err(_) => format!("{:X?}", key), // Fallback to hex representation if not valid UTF-8
-            };
-
-            let value_str = match std::str::from_utf8(value) {
-                Ok(s) => s.to_string(),
-                Err(_) => format!("{:X?}", value), // Fallback to hex representation if not valid UTF-8
-            };
-            println!("{:<10}: {:?}", "Key", key_str);
-            println!("{:<10}: {:?}", "Value", value_str);
-        } else {
-            println!("Invalid Iterator State");
-        }
-        println!(
-            "{} {} {}",
-            sep,
-            format!("{:^25}", "End Memtable Iterator"),
-            sep
-        );
     }
 }

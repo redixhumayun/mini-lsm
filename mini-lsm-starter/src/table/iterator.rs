@@ -1,3 +1,4 @@
+use core::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -72,6 +73,18 @@ impl SsTableIterator {
     }
 }
 
+impl fmt::Debug for SsTableIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SsTableIterator {{ ")?;
+        write!(
+            f,
+            "table: {:?}, block iter: {:?}, block index: {:?}",
+            self.table, self.blk_iter, self.blk_idx
+        )?;
+        write!(f, " }} ")
+    }
+}
+
 impl StorageIterator for SsTableIterator {
     type KeyType<'a> = KeySlice<'a>;
 
@@ -105,23 +118,5 @@ impl StorageIterator for SsTableIterator {
             }
         }
         Ok(())
-    }
-
-    fn print(&self) {
-        let separator = "-".repeat(10);
-        println!(
-            "{} {} {}",
-            separator,
-            format!("{:^25}", "SST_ITERATOR"),
-            separator
-        );
-        println!("Current Block Index: {}", self.blk_idx);
-        self.blk_iter.print();
-        println!(
-            "{} {} {}",
-            separator,
-            format!("{:^25}", "SST_ITERATOR_END"),
-            separator
-        );
     }
 }

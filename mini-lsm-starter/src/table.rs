@@ -5,6 +5,7 @@ pub(crate) mod bloom;
 mod builder;
 mod iterator;
 
+use core::fmt;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
@@ -127,6 +128,14 @@ pub struct SsTable {
     pub(crate) bloom: Option<Bloom>,
     /// The maximum timestamp stored in this SST, implemented in week 3.
     max_ts: u64,
+}
+
+impl fmt::Debug for SsTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first_key = String::from_utf8_lossy(self.first_key.raw_ref());
+        let last_key = String::from_utf8_lossy(self.last_key.raw_ref());
+        write!(f, "Key range ({} -> {})", first_key, last_key)
+    }
 }
 
 impl SsTable {

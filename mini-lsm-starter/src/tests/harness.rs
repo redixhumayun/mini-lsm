@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     collections::BTreeMap, ops::Bound, os::unix::fs::MetadataExt, path::Path, sync::Arc,
     time::Duration,
@@ -22,6 +23,12 @@ pub struct MockIterator {
     pub data: Vec<(Bytes, Bytes)>,
     pub error_when: Option<usize>,
     pub index: usize,
+}
+
+impl fmt::Debug for MockIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MockIterator")
+    }
 }
 
 impl MockIterator {
@@ -150,6 +157,11 @@ where
     I: for<'a> StorageIterator<KeyType<'a> = &'a [u8]>,
 {
     for (k, v) in expected {
+        let key = unsafe { String::from_utf8_unchecked(k.to_vec()) };
+        if key == "0000008736" {
+            let _n = key;
+            println!("The iter {:?}", iter);
+        }
         assert!(iter.is_valid());
         assert_eq!(
             k,
@@ -223,7 +235,7 @@ pub fn compaction_bench(storage: Arc<MiniLsm>) {
     let gen_value = |i| format!("{:0110}", i); // 110B
     let mut max_key = 0;
     let overlaps = if TS_ENABLED { 10000 } else { 20000 };
-    for iter in 0..10 {
+    for iter in 0..1 {
         let range_begin = iter * 5000;
         for i in range_begin..(range_begin + overlaps) {
             // 120B per key, 4MB data populated
@@ -235,6 +247,8 @@ pub fn compaction_bench(storage: Arc<MiniLsm>) {
             max_key = max_key.max(i);
         }
     }
+
+    println!("The state after insertion {:?}", storage.inner.state);
 
     std::thread::sleep(Duration::from_secs(1)); // wait until all memtables flush
     while {
@@ -255,6 +269,11 @@ pub fn compaction_bench(storage: Arc<MiniLsm>) {
     } {
         println!("waiting for compaction to converge");
     }
+
+    println!(
+        "The state after compaction converges {:?}",
+        storage.inner.state
+    );
 
     let mut expected_key_value_pairs = Vec::new();
     for i in 0..(max_key + 40000) {

@@ -1,6 +1,7 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
+use core::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -67,6 +68,18 @@ impl SstConcatIterator {
     }
 }
 
+impl fmt::Debug for SstConcatIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SstConcatIterator {{ ")?;
+        write!(
+            f,
+            "current iter: {:?}, sstables: {:?}",
+            self.current, self.sstables
+        )?;
+        write!(f, " }} ")
+    }
+}
+
 impl StorageIterator for SstConcatIterator {
     type KeyType<'a> = KeySlice<'a>;
 
@@ -87,26 +100,27 @@ impl StorageIterator for SstConcatIterator {
     }
 
     fn next(&mut self) -> Result<()> {
-        self.current.as_mut().unwrap().next()?;
-
-        //  check if iterator valid
-        if self.current.as_ref().unwrap().is_valid() {
-            return Ok(());
-        }
-
-        //  iterator is not valid, pick another valid iterator
-        while let Some(current) = self.current.as_mut() {
-            if self.next_sst_idx >= self.sstables.len() {
-                self.current = None;
+        //  check if the current iterator is valid
+        if let Some(current) = self.current.as_mut() {
+            current.next()?;
+            if current.is_valid() {
                 return Ok(());
             }
-
-            let iter = SsTableIterator::create_and_seek_to_first(Arc::clone(
-                &self.sstables[self.next_sst_idx],
-            ))?;
-            self.current = Some(iter);
-            self.next_sst_idx += 1;
         }
+
+        //  the current iterator is not valid
+        while self.next_sst_idx < self.sstables.len() {
+            let table = Arc::clone(&self.sstables[self.next_sst_idx]);
+            let iter = SsTableIterator::create_and_seek_to_first(table)?;
+            self.next_sst_idx += 1;
+            if iter.is_valid() {
+                self.current = Some(iter);
+                return Ok(());
+            }
+        }
+
+        //  there is no valid iterator
+        self.current = None;
         Ok(())
     }
 

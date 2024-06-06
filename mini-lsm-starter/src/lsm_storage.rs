@@ -1,5 +1,6 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
+use core::fmt;
 use std::collections::HashMap;
 use std::ops::Bound;
 use std::path::{Path, PathBuf};
@@ -42,6 +43,16 @@ pub struct LsmStorageState {
     pub levels: Vec<(usize, Vec<usize>)>,
     /// SST objects.
     pub sstables: HashMap<usize, Arc<SsTable>>,
+}
+
+impl fmt::Debug for LsmStorageState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "The current memtable {:?}", self.memtable)?;
+        writeln!(f, "Immutable memtables: {:?}", self.imm_memtables)?;
+        writeln!(f, "L0 SSTs: {:?}", self.l0_sstables)?;
+        writeln!(f, "Levels: {:?}", self.levels)?;
+        writeln!(f, "SST objects: {:?}", self.sstables)
+    }
 }
 
 pub enum WriteBatchRecord<T: AsRef<[u8]>> {
@@ -445,6 +456,9 @@ impl LsmStorageInner {
         let _state_lock = self.state_lock.lock();
         let oldest_memtable = {
             let state_guard = self.state.read();
+            if state_guard.imm_memtables.len() == 0 {
+                return Ok(());
+            }
             let oldest_memtable = state_guard
                 .imm_memtables
                 .last()

@@ -1,6 +1,7 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
+use core::fmt;
 use std::{
     collections::HashSet,
     ops::Bound,
@@ -69,6 +70,15 @@ pub struct TxnLocalIterator {
     item: (Bytes, Bytes),
 }
 
+impl fmt::Debug for TxnLocalIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TxnLocation Iterator no implementation for debug provided"
+        )
+    }
+}
+
 impl StorageIterator for TxnLocalIterator {
     type KeyType<'a> = &'a [u8];
 
@@ -100,6 +110,12 @@ impl TxnIterator {
         iter: TwoMergeIterator<TxnLocalIterator, FusedIterator<LsmIterator>>,
     ) -> Result<Self> {
         unimplemented!()
+    }
+}
+
+impl fmt::Debug for TxnIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TxnIterator no implementation for debug provided")
     }
 }
 
