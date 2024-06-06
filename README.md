@@ -217,6 +217,26 @@ lower -> [50, 250], [251, 300]
 
 and now when running compaction again, all 3 files will need to be compacted. This increases the write amplification. Instead, it would be better to compact everything at once.
 
+##  Week 2 Day 5
+* When do you need to call fsync? Why do you need to fsync the directory?
+When we want to ensure that nothing is cached in the OS buffer and writes are actually flushed to disk. The directory needs to be fsynced for this reason.
+
+* What are the places you will need to write to the manifest?
+Anywhere where the state is changing so that the entire state can be rebuilt by running through the manifest
+
+* Consider an alternative implementation of an LSM engine that does not use a manifest file. Instead, it records the level/tier information in the header of each file, scans the storage directory every time it restarts, and recover the LSM state solely from the files present in the directory. Is it possible to correctly maintain the LSM state in this implementation and what might be the problems/challenges with that?
+Yes, it should be possible.
+One problem is that each SST file needs to be constantly updated with the level of the file so additional read & write.
+
+* Currently, we create all SST/concat iterators before creating the merge iterator, which means that we have to load the first block of the first SST in all levels into memory before starting the scanning process. We have start/end key in the manifest, and is it possible to leverage this information to delay the loading of the data blocks and make the time to return the first key-value pair faster?
+If we have the first/end key in the manifest for each SST, then we can only load the relevant ones when doing a scan by doing a range overlap check.
+
+* Is it possible not to store the tier/level information in the manifest? i.e., we only store the list of SSTs we have in the manifest without the level information, and rebuild the tier/level using the key range and timestamp information (SST metadata).
+Yes, this should be possible because the timestamp will tell us the chronological order of the SST's and the key range will tell us in which order the SST's should be stored at a level.
+
+So, we could do something simple like start reading the oldest SST's and storing them at the bottom levels by order of first key and keep going until the level is full and then do that for every level above (but how do we know when a level is full? based on the target size and actual size calculations).
+
+
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
 # LSM in a Week
