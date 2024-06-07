@@ -596,19 +596,15 @@ impl LsmStorageInner {
         state.imm_memtables.insert(0, current_memtable);
         state.memtable = new_memtable;
 
-        if self.options.enable_wal {
-            self.manifest
-                .as_ref()
-                .map(|manifest| {
-                    manifest.add_record(
-                        &_state_lock_observer,
-                        ManifestRecord::NewMemtable(memtable_id),
-                    )
-                })
-                .ok_or_else(|| {
-                    anyhow::anyhow!("no manifest handle found while freezing memtable")
-                })??;
-        }
+        self.manifest
+            .as_ref()
+            .map(|manifest| {
+                manifest.add_record(
+                    &_state_lock_observer,
+                    ManifestRecord::NewMemtable(memtable_id),
+                )
+            })
+            .ok_or_else(|| anyhow::anyhow!("no manifest handle found while freezing memtable"))??;
         self.sync_dir()?;
         Ok(())
     }
