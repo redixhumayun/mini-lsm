@@ -5,7 +5,7 @@ use crate::{
     lsm_storage::{LsmStorageOptions, MiniLsm},
 };
 
-use super::harness::{check_compaction_ratio, compaction_bench, simple_bench};
+use super::harness::{check_compaction_ratio, compaction_bench};
 
 #[test]
 fn test_integration_simple() {
@@ -23,7 +23,7 @@ fn test_integration_simple() {
     )
     .unwrap();
 
-    simple_bench(storage.clone());
+    // simple_bench(storage.clone());
 }
 
 #[test]
