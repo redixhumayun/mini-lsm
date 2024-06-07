@@ -445,7 +445,7 @@ impl LsmStorageInner {
     /// run the compaction task to get the id's that need to be added and then apply the compaction on the state
     /// to get the id's that need to be removed
     fn trigger_compaction(&self) -> Result<()> {
-        let mut snapshot = {
+        let snapshot = {
             let state = self.state.read();
             state.as_ref().clone()
         };
@@ -458,22 +458,18 @@ impl LsmStorageInner {
         self.dump_structure();
         println!("created a compaction task {:?}", task);
         let sstables_to_add = self.compact(&task)?;
-        let table_ids_to_add: Vec<usize> = {
-            let _state_lock = self.state_lock.lock();
-            let mut table_ids_to_add = Vec::with_capacity(sstables_to_add.len());
+
+        let (sstable_ids_to_add, sstable_ids_to_remove) = {
+            let state_lock = self.state_lock.lock();
+            let mut snapshot = self.state.read().as_ref().clone();
+            let mut sstable_ids_to_add = Vec::with_capacity(sstables_to_add.len());
             for sstable in sstables_to_add {
-                table_ids_to_add.push(sstable.sst_id());
+                sstable_ids_to_add.push(sstable.sst_id());
                 snapshot.sstables.insert(sstable.sst_id(), sstable);
             }
-            table_ids_to_add
-        };
-
-        let (mut new_state, sstable_ids_to_remove) = self
-            .compaction_controller
-            .apply_compaction_result(&snapshot, &task, &table_ids_to_add);
-
-        {
-            let state_lock = self.state_lock.lock();
+            let (mut new_state, sstable_ids_to_remove) = self
+                .compaction_controller
+                .apply_compaction_result(&snapshot, &task, &sstable_ids_to_add);
             for sstable_id in &sstable_ids_to_remove {
                 let sst = new_state.sstables.remove(&sstable_id);
                 assert!(sst.is_some());
@@ -490,13 +486,14 @@ impl LsmStorageInner {
                 })?
                 .add_record(
                     &state_lock,
-                    ManifestRecord::Compaction(task, table_ids_to_add.clone()),
+                    ManifestRecord::Compaction(task, sstable_ids_to_add.clone()),
                 )?;
-        }
+            (sstable_ids_to_add, sstable_ids_to_remove)
+        };
 
         println!(
             "compaction finished -> files added {:?}, files removed {:?}",
-            table_ids_to_add, sstable_ids_to_remove
+            sstable_ids_to_add, sstable_ids_to_remove
         );
         for sstable_id in &sstable_ids_to_remove {
             std::fs::remove_file(self.path_of_sst(*sstable_id))?;

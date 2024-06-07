@@ -35,13 +35,11 @@ impl Wal {
         let mut reader = BufReader::new(&file);
         loop {
             let mut key_length_buf = [0u8; 8];
-            if let Err(e) = reader.read_exact(&mut key_length_buf) {
-                println!(
-                    "encountered error while reading wal. maybe reached eof {}",
-                    e
-                );
-                break;
-            };
+            match reader.read_exact(&mut key_length_buf) {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => eprintln!("encountered error while reading wal: {}", e),
+            }
             let key_length = u64::from_be_bytes(key_length_buf);
 
             let mut key = vec![0u8; key_length as usize];
@@ -87,8 +85,7 @@ impl Wal {
             .map_err(|e| anyhow::anyhow!("failed to flush wal from program buffer: {}", e))?;
         file.get_mut()
             .sync_all()
-            .map_err(|e| anyhow::anyhow!("failed to flush wal from os buffer: {}", e))?;
-        unimplemented!()
+            .map_err(|e| anyhow::anyhow!("failed to flush wal from os buffer: {}", e))
     }
 }
 

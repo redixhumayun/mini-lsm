@@ -44,8 +44,12 @@ impl fmt::Debug for MemTable {
 
                 write!(
                     f,
-                    "Key range: {} -> {} | Value range: {} -> {}",
-                    first_key, last_key, trimmed_first_value, trimmed_last_value
+                    "memtable id: {}, key range: {} -> {} | Value range: {} -> {}",
+                    self.id(),
+                    first_key,
+                    last_key,
+                    trimmed_first_value,
+                    trimmed_last_value
                 )
             }
             _ => {
@@ -66,23 +70,36 @@ pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
 
 impl MemTable {
     /// Create a new mem-table.
-    pub fn create(_id: usize) -> Self {
+    pub fn create(id: usize) -> Self {
         MemTable {
             map: Arc::new(SkipMap::new()),
             wal: Option::None,
-            id: _id,
+            id,
             approximate_size: Arc::new(AtomicUsize::new(0)),
         }
     }
 
     /// Create a new mem-table with WAL
-    pub fn create_with_wal(_id: usize, _path: impl AsRef<Path>) -> Result<Self> {
-        unimplemented!()
+    pub fn create_with_wal(id: usize, path: impl AsRef<Path>) -> Result<Self> {
+        let wal = Wal::create(path)?;
+        Ok(MemTable {
+            map: Arc::new(SkipMap::new()),
+            wal: Some(wal),
+            id,
+            approximate_size: Arc::new(AtomicUsize::new(0)),
+        })
     }
 
     /// Create a memtable from WAL
-    pub fn recover_from_wal(_id: usize, _path: impl AsRef<Path>) -> Result<Self> {
-        unimplemented!()
+    pub fn recover_from_wal(id: usize, path: impl AsRef<Path>) -> Result<Self> {
+        let skiplist: SkipMap<Bytes, Bytes> = SkipMap::new();
+        let wal = Wal::recover(path, &skiplist)?;
+        Ok(MemTable {
+            map: Arc::new(skiplist),
+            wal: Some(wal),
+            id,
+            approximate_size: Arc::new(AtomicUsize::new(0)),
+        })
     }
 
     pub fn for_testing_put_slice(&self, key: &[u8], value: &[u8]) -> Result<()> {
@@ -123,6 +140,10 @@ impl MemTable {
         let new_size = current_size + key_value_size;
         self.approximate_size
             .store(new_size, std::sync::atomic::Ordering::Relaxed);
+        if let Some(wal) = self.wal.as_ref() {
+            wal.put(key, value)?;
+        }
+        self.sync_wal()?;
         Ok(())
     }
 
