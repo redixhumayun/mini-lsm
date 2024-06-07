@@ -13,6 +13,8 @@ use crate::{
     lsm_storage::BlockCache,
 };
 
+pub const CHECKSUM_LENGTH: usize = 4;
+
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
     builder: BlockBuilder,
@@ -62,6 +64,12 @@ impl SsTableBuilder {
         self.last_key = key.to_key_vec().raw_ref().to_vec();
     }
 
+    /// NOTE: How to handle writing and reading checksums. When a block is frozen, calculate the hash for the block
+    /// and write it after the data. Don't include the checksum in the block size calculation but do include it in
+    /// the offset calculation. Next, when reading a block via `read_block` in table.rs, extract the last 32 bits of the
+    /// raw block data and decode the checksum from that. After decoding the block data, recompute the checksum
+    /// and see if it matches
+
     /// This function will take current block builder, build it and replace it with a fresh block builder
     /// It will add the block to the SSTable data and then create and store the metadata for this block
     fn freeze_block(&mut self) {
@@ -69,6 +77,8 @@ impl SsTableBuilder {
         let builder = std::mem::replace(&mut self.builder, BlockBuilder::new(self.block_size));
         let block = builder.build();
         let encoded_block = Block::encode(&block);
+        let checksum = crc32fast::hash(&block.data);
+        let encoded_checksum = checksum.to_be_bytes();
 
         //  get metadata for split block
         let block_meta = BlockMeta {
@@ -78,6 +88,7 @@ impl SsTableBuilder {
         };
 
         self.data.extend_from_slice(&encoded_block);
+        self.data.extend_from_slice(&encoded_checksum);
         self.meta.push(block_meta);
     }
 

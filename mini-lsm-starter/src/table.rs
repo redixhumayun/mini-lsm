@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 pub use builder::SsTableBuilder;
+use builder::CHECKSUM_LENGTH;
 use bytes::Buf;
 pub use iterator::SsTableIterator;
 
@@ -264,8 +265,24 @@ impl SsTable {
         let block_data_raw = self
             .file
             .read(block_offset_start as u64, block_len as u64)?;
-        let block_data = Block::decode(&block_data_raw);
-        Ok(Arc::new(block_data))
+
+        let block = Block::decode(&block_data_raw[..&block_data_raw.len() - CHECKSUM_LENGTH]);
+        let stored_checksum = u32::from_be_bytes(
+            block_data_raw[block_data_raw.len() - CHECKSUM_LENGTH..]
+                .try_into()
+                .expect("checksum has incorrect length"),
+        );
+
+        let computed_checksum = crc32fast::hash(&block.data);
+        if stored_checksum != computed_checksum {
+            return Err(anyhow::anyhow!(
+                "checksum mismatch in block {}. computed -> {}, actual -> {}",
+                block_idx,
+                computed_checksum,
+                stored_checksum
+            ));
+        }
+        Ok(Arc::new(block))
     }
 
     /// Read a block from disk, with block cache. (Day 4)

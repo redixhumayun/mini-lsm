@@ -90,6 +90,13 @@ fn test_sst_decode() {
     );
 }
 
+#[test]
+fn test_block_checksum() {
+    let (_dir, sst) = generate_sst_small();
+    let new_sst = SsTable::open_for_test(sst.file).unwrap();
+    let _block = new_sst.read_block(0).unwrap();
+}
+
 fn as_bytes(x: &[u8]) -> Bytes {
     Bytes::copy_from_slice(x)
 }
