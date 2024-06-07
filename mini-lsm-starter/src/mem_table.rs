@@ -143,7 +143,7 @@ impl MemTable {
         if let Some(wal) = self.wal.as_ref() {
             wal.put(key, value)?;
         }
-        self.sync_wal()?;
+        self.sync_wal()?; //  TODO: Syncing wal on every put will probably hurt throughput significantly?
         Ok(())
     }
 

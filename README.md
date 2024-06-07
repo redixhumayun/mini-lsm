@@ -236,6 +236,17 @@ Yes, this should be possible because the timestamp will tell us the chronologica
 
 So, we could do something simple like start reading the oldest SST's and storing them at the bottom levels by order of first key and keep going until the level is full and then do that for every level above (but how do we know when a level is full? based on the target size and actual size calculations).
 
+##  Week 2 Day 6
+* When can you tell the user that their modifications (put/delete) have been persisted?
+In my implementation, I am calling `sync_wal` on every `put` operation but that is probably incorrect. Typically, the `sync_wal` operation will be called once every x milliseconds and that is what will provide a guarantee to the user that the data has been persisted.
+
+Alternatively, the `sync` operation on the engine provides the same functionality. So, whenever `sync` is called is when the data has been persisted.
+
+* How can you handle corrupted data in WAL?
+Depends what we mean by corrupted data. Does that mean partial writes? Does that mean malformed writes to the file? 
+
+I know of the ARIES protocol for WAL recovery, I suppose that could work? Or add a checksum to the WAL (for every write maybe?) and use the checksum to determine if the WAL has been corrupted. If the WAL was corrupted, bail out of restoring a memtable from it.
+
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
