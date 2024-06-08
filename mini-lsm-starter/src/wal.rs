@@ -8,6 +8,8 @@ use bytes::Bytes;
 use crossbeam_skiplist::SkipMap;
 use parking_lot::Mutex;
 
+const CHECKSUM_LENGTH: usize = 4;
+
 pub struct Wal {
     file: Arc<Mutex<BufWriter<File>>>,
 }
@@ -57,6 +59,21 @@ impl Wal {
             reader
                 .read_exact(&mut value)
                 .context("failed to read value from wal")?;
+
+            let mut checksum_buf = [0u8; CHECKSUM_LENGTH];
+            reader
+                .read_exact(&mut checksum_buf)
+                .context("failed to read checksum from wal")?;
+            let stored_checksum = u32::from_be_bytes(checksum_buf);
+            let computed_checksum = crc32fast::hash(&[key.clone(), value.clone()].concat());
+            if stored_checksum != computed_checksum {
+                return Err(anyhow::anyhow!(
+                    "checksum mismatch in wal. stored -> {}, computed -> {}",
+                    stored_checksum,
+                    computed_checksum
+                ));
+            }
+
             skiplist.insert(Bytes::from(key), Bytes::from(value));
         }
 
@@ -69,11 +86,13 @@ impl Wal {
         let mut file = self.file.lock();
         let key_length = key.len() as u64;
         let value_length = value.len() as u64;
+        let checksum = crc32fast::hash(&[key, value].concat());
         let data = [
             &key_length.to_be_bytes(),
             key,
             &value_length.to_be_bytes(),
             value,
+            &checksum.to_be_bytes(),
         ]
         .concat();
         file.write_all(&data).context("failed to write to WAL file")
