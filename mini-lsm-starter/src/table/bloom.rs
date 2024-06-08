@@ -3,6 +3,10 @@
 use anyhow::Result;
 use bytes::{BufMut, Bytes, BytesMut};
 
+use super::builder::CHECKSUM_LENGTH;
+
+const NUM_HASH_FN_LEN: usize = 1;
+
 /// Implements a bloom filter
 pub struct Bloom {
     /// data of filter in bits
@@ -47,8 +51,22 @@ impl<T: AsMut<[u8]>> BitSliceMut for T {
 impl Bloom {
     /// Decode a bloom filter
     pub fn decode(buf: &[u8]) -> Result<Self> {
-        let filter = &buf[..buf.len() - 1];
-        let k = buf[buf.len() - 1];
+        let filter = &buf[..buf.len() - NUM_HASH_FN_LEN - CHECKSUM_LENGTH];
+        let k = buf[buf.len() - NUM_HASH_FN_LEN - CHECKSUM_LENGTH];
+        let stored_checksum_bytes = &buf[buf.len() - CHECKSUM_LENGTH..];
+        let stored_checksum = u32::from_le_bytes(
+            stored_checksum_bytes
+                .try_into()
+                .expect("checksum has incorrect length in bloom filter"),
+        );
+        let computed_checksum = crc32fast::hash(&buf[..buf.len() - CHECKSUM_LENGTH]);
+        if stored_checksum != computed_checksum {
+            return Err(anyhow::anyhow!(
+                "checksum mismatch in bloom filter, computed -> {}, stored -> {}",
+                computed_checksum,
+                stored_checksum
+            ));
+        }
         Ok(Self {
             filter: filter.to_vec().into(),
             k,
@@ -57,8 +75,12 @@ impl Bloom {
 
     /// Encode a bloom filter
     pub fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend(&self.filter);
-        buf.put_u8(self.k);
+        let mut temp_buf: Vec<u8> = Vec::new();
+        temp_buf.extend(&self.filter);
+        temp_buf.put_u8(self.k);
+        let checksum = crc32fast::hash(&temp_buf);
+        buf.extend(temp_buf);
+        buf.extend(checksum.to_le_bytes());
     }
 
     /// Get bloom filter bits per key from entries count and FPR
@@ -112,5 +134,21 @@ impl Bloom {
 
             true
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn encode_and_decode_bloom_filter() {
+        let filter_bytes = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3];
+        let bloom_filter = super::Bloom {
+            filter: filter_bytes.clone().into(),
+            k: 3,
+        };
+        let mut buf: Vec<u8> = Vec::new();
+        bloom_filter.encode(&mut buf);
+        let decoded_bloom_filter = super::Bloom::decode(&buf).unwrap();
+        assert_eq!(decoded_bloom_filter.k, bloom_filter.k);
     }
 }

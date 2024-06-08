@@ -64,12 +64,6 @@ impl SsTableBuilder {
         self.last_key = key.to_key_vec().raw_ref().to_vec();
     }
 
-    /// NOTE: How to handle writing and reading checksums. When a block is frozen, calculate the hash for the block
-    /// and write it after the data. Don't include the checksum in the block size calculation but do include it in
-    /// the offset calculation. Next, when reading a block via `read_block` in table.rs, extract the last 32 bits of the
-    /// raw block data and decode the checksum from that. After decoding the block data, recompute the checksum
-    /// and see if it matches
-
     /// This function will take current block builder, build it and replace it with a fresh block builder
     /// It will add the block to the SSTable data and then create and store the metadata for this block
     fn freeze_block(&mut self) {
@@ -116,10 +110,17 @@ impl SsTableBuilder {
         let mut encoded_sst: Vec<u8> = Vec::new();
         encoded_sst.extend_from_slice(&self.data);
 
-        //  encode meta section for each block and add it to encoding
+        //  encode meta section for each block
         let mut encoded_meta: Vec<u8> = Vec::new();
         BlockMeta::encode_block_meta(&self.meta, &mut encoded_meta);
+
+        //  calculate the checksum for the metadata
+        let meta_checksum = crc32fast::hash(&encoded_meta);
+        let meta_checksum_bytes = meta_checksum.to_le_bytes();
+
+        //  add meta to encoding along with checksum
         encoded_sst.extend_from_slice(&encoded_meta);
+        encoded_sst.extend_from_slice(&meta_checksum_bytes);
 
         //  encode the meta block offset in the next 4 bytes
         let data_len = (self.data.len() as u32).to_le_bytes();

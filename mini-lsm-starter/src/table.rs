@@ -22,6 +22,9 @@ use crate::lsm_storage::BlockCache;
 
 use self::bloom::Bloom;
 
+const BLOOM_FILTER_OFFSET_LEN: u64 = 4;
+const META_BLOCK_OFFSET_LEN: u64 = 4;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockMeta {
     /// Offset of this data block.
@@ -205,20 +208,46 @@ impl SsTable {
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
         let len = file.size();
         //  read the last 4 bytes to get the bloom filter offset
-        let bloom_filter_offset_raw = file.read(len - 4, 4)?;
+        let bloom_filter_offset_raw =
+            file.read(len - BLOOM_FILTER_OFFSET_LEN, BLOOM_FILTER_OFFSET_LEN)?;
         let bloom_filter_offset = (&bloom_filter_offset_raw[..]).get_u32_le() as u64;
 
         //  use the bloom filter offset to read the data starting
-        let raw_bloom_filter = file.read(bloom_filter_offset, len - bloom_filter_offset - 4)?;
+        let raw_bloom_filter = file.read(
+            bloom_filter_offset,
+            len - bloom_filter_offset - BLOOM_FILTER_OFFSET_LEN,
+        )?;
         let bloom_filter = Bloom::decode(&raw_bloom_filter)?;
 
         //  read the 4 bytes before the bloom offset to get the meta offset
-        let raw_meta_offset = file.read(bloom_filter_offset - 4, 4)?;
+        let raw_meta_offset = file.read(
+            bloom_filter_offset - META_BLOCK_OFFSET_LEN,
+            META_BLOCK_OFFSET_LEN,
+        )?;
         let meta_offset = (&raw_meta_offset[..]).get_u32_le() as u64;
 
         //  use the meta offset to read the metadata from the file
         let raw_meta = file.read(meta_offset as u64, bloom_filter_offset - 4 - meta_offset)?;
-        let meta = BlockMeta::decode_block_meta(raw_meta.as_slice());
+        let meta_length = raw_meta.len() - CHECKSUM_LENGTH;
+        let (raw_meta_data, checksum_bytes) = raw_meta.split_at(meta_length);
+
+        //  compare checksums
+        let stored_checksum = u32::from_le_bytes(
+            checksum_bytes
+                .try_into()
+                .expect("checksum has incorrect length in sstable meta"),
+        );
+        let computed_checksum = crc32fast::hash(raw_meta_data);
+        if stored_checksum != computed_checksum {
+            return Err(anyhow::anyhow!(
+                "checksum mismatch in metadata. computed: {}, actual: {}",
+                computed_checksum,
+                stored_checksum
+            ));
+        }
+
+        //  decode the meta
+        let meta = BlockMeta::decode_block_meta(raw_meta_data);
 
         Ok(SsTable {
             file,
