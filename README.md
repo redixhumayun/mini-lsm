@@ -247,6 +247,14 @@ Depends what we mean by corrupted data. Does that mean partial writes? Does that
 
 I know of the ARIES protocol for WAL recovery, I suppose that could work? Or add a checksum to the WAL (for every write maybe?) and use the checksum to determine if the WAL has been corrupted. If the WAL was corrupted, bail out of restoring a memtable from it.
 
+##  Week 2 Day 7
+* Consider the case that an LSM storage engine only provides write_batch as the write interface (instead of single put + delete). Is it possible to implement it as follows: there is a single write thread with an mpsc channel receiver to get the changes, and all threads send write batches to the write thread. The write thread is the single point to write to the database. What are the pros/cons of this implementation? (Congrats if you do so you get BadgerDB!)
+This is possible, although I imagine there would be reduced throughput because everything is going onto a single thread. On the other hand, there is no complexity or overhead related to managing a multi-threaded system and context switching between threads and handling mutexes.
+
+* Is it okay to put all block checksums altogether at the end of the SST file instead of store it along with the block? Why?
+This would make reads slower because every read of a block would involve reading another part of the file where the checksums are stored. Introduced an additional I/O unless the entire file is read at once.
+
+
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
