@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::compact::CompactionTask;
 
+const CHECKSUM_LENGTH: usize = 4;
+
+#[derive(Serialize, Deserialize)]
+pub struct ManifestRecordWrapper {
+    len: u64,
+    record: Vec<u8>,
+    checksum: u32,
+}
+
 pub struct Manifest {
     file: Arc<Mutex<File>>,
 }
@@ -40,7 +49,8 @@ impl Manifest {
             .open(path)
             .context("failed to open manifest file")?;
         let reader = BufReader::new(&file);
-        let stream = serde_json::Deserializer::from_reader(reader).into_iter::<ManifestRecord>();
+        let stream =
+            serde_json::Deserializer::from_reader(reader).into_iter::<ManifestRecordWrapper>();
 
         let mut records = Vec::new();
         for result in stream {
@@ -49,11 +59,25 @@ impl Manifest {
             records.push(record);
         }
 
+        let deserialized_records = records
+            .iter()
+            .map(|record_wrapper| {
+                let data = &record_wrapper.record;
+                let stored_checksum = record_wrapper.checksum;
+                let computed_checksum = crc32fast::hash(&data);
+                if stored_checksum != computed_checksum {
+                    return Err(anyhow::anyhow!("checksum comparison failed while reading manifest. stored -> {}, computed -> {}", stored_checksum, computed_checksum));
+                }
+                let record = serde_json::from_slice::<ManifestRecord>(&data)?;
+                Ok(record)
+            })
+            .collect::<Result<Vec<ManifestRecord>>>()?;
+
         Ok((
             Self {
                 file: Arc::new(Mutex::new(file)),
             },
-            records,
+            deserialized_records,
         ))
     }
 
@@ -67,8 +91,18 @@ impl Manifest {
 
     pub fn add_record_when_init(&self, record: ManifestRecord) -> Result<()> {
         let data = serde_json::to_vec(&record)?;
+        let checksum = crc32fast::hash(&data);
+        let record_length = data.len() + CHECKSUM_LENGTH;
+        let record_wrapper = ManifestRecordWrapper {
+            len: record_length
+                .try_into()
+                .expect("record length is too large while writing manifest"),
+            record: data,
+            checksum,
+        };
+        let record_bytes = serde_json::to_vec(&record_wrapper)?;
         let mut file = self.file.lock();
-        file.write_all(&data)
+        file.write_all(&record_bytes)
             .map_err(|e| anyhow::anyhow!("failed to write to manifest file: {:?}", e))?;
         file.sync_all()?;
         Ok(())
