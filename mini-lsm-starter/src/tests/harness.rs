@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     collections::BTreeMap, ops::Bound, os::unix::fs::MetadataExt, path::Path, sync::Arc,
     time::Duration,
@@ -24,8 +25,8 @@ pub struct MockIterator {
     pub index: usize,
 }
 
-impl core::fmt::Debug for MockIterator {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Debug for MockIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "MockIterator")
     }
 }

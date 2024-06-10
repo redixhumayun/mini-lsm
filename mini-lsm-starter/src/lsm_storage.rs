@@ -21,7 +21,7 @@ use crate::iterators::concat_iterator::SstConcatIterator;
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::{Key, KeyBytes, KeySlice};
+use crate::key::{Key, KeyBytes, KeySlice, TS_RANGE_BEGIN};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::{Manifest, ManifestRecord};
 use crate::mem_table::{map_bound, MemTable};
@@ -436,11 +436,13 @@ impl LsmStorageInner {
     }
 
     pub fn should_include_table(&self, sstable: &Arc<SsTable>, key: &KeyBytes) -> bool {
-        if key < sstable.first_key() || key > sstable.last_key() {
+        if key.key_ref() < sstable.first_key().key_ref()
+            || key.key_ref() > sstable.last_key().key_ref()
+        {
             return false;
         }
         if let Some(bloom_filter) = &sstable.bloom {
-            if !bloom_filter.may_contain(farmhash::fingerprint32(key.as_key_slice().raw_ref())) {
+            if !bloom_filter.may_contain(farmhash::fingerprint32(key.as_key_slice().key_ref())) {
                 return false;
             }
         }
@@ -475,12 +477,15 @@ impl LsmStorageInner {
         let mut sstable_iterators: Vec<Box<SsTableIterator>> = Vec::new();
         for sstable_id in snapshot.l0_sstables.iter() {
             let sstable = snapshot.sstables.get(&sstable_id).unwrap();
-            if !self.should_include_table(sstable, &Key::from_vec(key.to_vec()).into_key_bytes()) {
+            if !self.should_include_table(
+                sstable,
+                &Key::from_bytes_with_ts(Bytes::from(key.to_vec()), TS_RANGE_BEGIN),
+            ) {
                 continue;
             }
             let sstable_iter = SsTableIterator::create_and_seek_to_key(
                 Arc::clone(sstable),
-                KeySlice::from_slice(key),
+                KeySlice::from_slice(key, TS_RANGE_BEGIN),
             )?;
             sstable_iterators.push(Box::new(sstable_iter));
         }
@@ -496,20 +501,24 @@ impl LsmStorageInner {
                     .get(table_id)
                     .ok_or_else(|| anyhow::anyhow!("could not find sstable with id {}", table_id))?
                     .clone();
-                if self.should_include_table(&table, &Key::from_vec(key.to_vec()).into_key_bytes())
-                {
+                if self.should_include_table(
+                    &table,
+                    &Key::from_bytes_with_ts(Bytes::from(key.to_vec()), TS_RANGE_BEGIN),
+                ) {
                     tables.push(table);
                 }
             }
-            let level_iter =
-                SstConcatIterator::create_and_seek_to_key(tables, Key::from_slice(key))?;
+            let level_iter = SstConcatIterator::create_and_seek_to_key(
+                tables,
+                Key::from_slice(key, TS_RANGE_BEGIN),
+            )?;
             level_iters.push(Box::new(level_iter));
         }
         let sst_iter = MergeIterator::create(level_iters);
 
         let iter = TwoMergeIterator::create(l0_iter, sst_iter)?;
 
-        if iter.is_valid() && iter.key() == Key::from_slice(key) && !iter.value().is_empty() {
+        if iter.is_valid() && iter.key().key_ref() == key && !iter.value().is_empty() {
             return Ok(Some(Bytes::copy_from_slice(iter.value())));
         }
 
@@ -698,14 +707,14 @@ impl LsmStorageInner {
             let sstable_iter = match lower {
                 Bound::Included(key) => SsTableIterator::create_and_seek_to_key(
                     Arc::clone(sstable),
-                    KeySlice::from_slice(key),
+                    KeySlice::from_slice(key, TS_RANGE_BEGIN),
                 )?,
                 Bound::Excluded(key) => {
                     let mut iterator = SsTableIterator::create_and_seek_to_key(
                         Arc::clone(sstable),
-                        KeySlice::from_slice(key),
+                        KeySlice::from_slice(key, TS_RANGE_BEGIN),
                     )?;
-                    if iterator.is_valid() && iterator.key().raw_ref() == key {
+                    if iterator.is_valid() && iterator.key().key_ref() == key {
                         iterator.next()?;
                     }
                     iterator
@@ -732,13 +741,16 @@ impl LsmStorageInner {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let level_iter = match lower {
-                Bound::Included(key) => {
-                    SstConcatIterator::create_and_seek_to_key(tables, Key::from_slice(key))?
-                }
+                Bound::Included(key) => SstConcatIterator::create_and_seek_to_key(
+                    tables,
+                    Key::from_slice(key, TS_RANGE_BEGIN),
+                )?,
                 Bound::Excluded(key) => {
-                    let mut iter =
-                        SstConcatIterator::create_and_seek_to_key(tables, Key::from_slice(key))?;
-                    if iter.is_valid() && iter.key().raw_ref() == key {
+                    let mut iter = SstConcatIterator::create_and_seek_to_key(
+                        tables,
+                        Key::from_slice(key, TS_RANGE_BEGIN),
+                    )?;
+                    if iter.is_valid() && iter.key().key_ref() == key {
                         iter.next()?;
                     }
                     iter
@@ -763,19 +775,19 @@ impl LsmStorageInner {
         table_last: &KeyBytes,
     ) -> bool {
         match lower {
-            Bound::Excluded(key) if key >= table_last.as_key_slice().raw_ref() => {
+            Bound::Excluded(key) if key >= table_last.as_key_slice().key_ref() => {
                 return false;
             }
-            Bound::Included(key) if key > table_last.as_key_slice().raw_ref() => {
+            Bound::Included(key) if key > table_last.as_key_slice().key_ref() => {
                 return false;
             }
             _ => {}
         }
         match upper {
-            Bound::Excluded(key) if key <= table_first.as_key_slice().raw_ref() => {
+            Bound::Excluded(key) if key <= table_first.as_key_slice().key_ref() => {
                 return false;
             }
-            Bound::Included(key) if key < table_first.as_key_slice().raw_ref() => {
+            Bound::Included(key) if key < table_first.as_key_slice().key_ref() => {
                 return false;
             }
             _ => {}

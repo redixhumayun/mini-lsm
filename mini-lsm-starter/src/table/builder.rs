@@ -9,7 +9,7 @@ use anyhow::Result;
 use super::{bloom::Bloom, BlockMeta, FileObject, SsTable};
 use crate::{
     block::{Block, BlockBuilder},
-    key::{Key, KeySlice},
+    key::{KeySlice, KeyVec},
     lsm_storage::BlockCache,
 };
 
@@ -18,8 +18,8 @@ pub const CHECKSUM_LENGTH: usize = 4;
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
     builder: BlockBuilder,
-    first_key: Vec<u8>,
-    last_key: Vec<u8>,
+    first_key: KeyVec,
+    last_key: KeyVec,
     data: Vec<u8>,
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
@@ -31,8 +31,8 @@ impl SsTableBuilder {
     pub fn new(block_size: usize) -> Self {
         SsTableBuilder {
             builder: BlockBuilder::new(block_size),
-            first_key: Vec::new(),
-            last_key: Vec::new(),
+            first_key: KeyVec::new(),
+            last_key: KeyVec::new(),
             data: Vec::new(),
             meta: Vec::new(),
             block_size,
@@ -46,21 +46,22 @@ impl SsTableBuilder {
     /// be helpful here)
     pub fn add(&mut self, key: KeySlice, value: &[u8]) {
         if self.first_key.is_empty() {
-            self.first_key = key.to_key_vec().raw_ref().to_vec();
+            self.first_key.set_from_slice(key);
         }
 
-        self.key_hashes.push(farmhash::fingerprint32(key.raw_ref()));
+        self.key_hashes
+            .push(farmhash::fingerprint32(&key.key_ref()));
 
         if self.builder.add(key, value) {
-            self.last_key = key.to_key_vec().raw_ref().to_vec();
+            self.last_key.set_from_slice(key);
             return;
         }
 
         self.freeze_block();
 
         assert!(self.builder.add(key, value));
-        self.first_key = key.to_key_vec().raw_ref().to_vec();
-        self.last_key = key.to_key_vec().raw_ref().to_vec();
+        self.first_key.set_from_slice(key);
+        self.last_key.set_from_slice(key);
     }
 
     /// This function will take current block builder, build it and replace it with a fresh block builder
@@ -76,8 +77,8 @@ impl SsTableBuilder {
         //  get metadata for split block
         let block_meta = BlockMeta {
             offset: self.data.len(),
-            first_key: Key::from_vec(self.first_key.clone()).into_key_bytes(),
-            last_key: Key::from_vec(self.last_key.clone()).into_key_bytes(),
+            first_key: std::mem::take(&mut self.first_key).into_key_bytes(),
+            last_key: std::mem::take(&mut self.last_key).into_key_bytes(),
         };
 
         self.data.extend_from_slice(&encoded_block);

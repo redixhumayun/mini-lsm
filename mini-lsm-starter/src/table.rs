@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::Result;
 pub use builder::SsTableBuilder;
 use builder::CHECKSUM_LENGTH;
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 pub use iterator::SsTableIterator;
 
 use crate::block::Block;
@@ -40,19 +40,18 @@ impl BlockMeta {
     /// You may add extra fields to the buffer,
     /// in order to help keep track of `first_key` when decoding from the same buffer in the future.
     pub fn encode_block_meta(block_meta: &[BlockMeta], buf: &mut Vec<u8>) {
-        for ind_block_meta in block_meta {
-            let offset_bytes = (ind_block_meta.offset as u16).to_le_bytes();
-            buf.extend_from_slice(&offset_bytes);
+        for meta in block_meta {
+            buf.put_u16_le(meta.offset as u16);
 
-            let first_key_length = ind_block_meta.first_key.len() as u16;
-            let first_key_length_bytes = first_key_length.to_le_bytes();
-            buf.extend_from_slice(&first_key_length_bytes);
-            buf.extend_from_slice(ind_block_meta.first_key.raw_ref());
+            //  add the first key
+            buf.put_u16_le(meta.first_key.key_len() as u16);
+            buf.put_slice(meta.first_key.key_ref());
+            buf.put_u64_le(meta.first_key.ts());
 
-            let last_key_length = ind_block_meta.last_key.len() as u16;
-            let last_key_length_bytes = last_key_length.to_le_bytes();
-            buf.extend_from_slice(&last_key_length_bytes);
-            buf.extend_from_slice(ind_block_meta.last_key.raw_ref());
+            //  add the second key
+            buf.put_u16_le(meta.last_key.key_len() as u16);
+            buf.put_slice(meta.last_key.key_ref());
+            buf.put_u64_le(meta.last_key.ts());
         }
     }
 
@@ -66,15 +65,17 @@ impl BlockMeta {
             let first_key_length = buf.get_u16_le() as usize;
             let mut first_key = vec![0; first_key_length];
             buf.copy_to_slice(&mut first_key);
+            let first_key_ts = buf.get_u64_le();
 
             let last_key_length = buf.get_u16_le() as usize;
             let mut last_key = vec![0; last_key_length];
             buf.copy_to_slice(&mut last_key);
+            let last_key_ts = buf.get_u64_le();
 
             block_metas.push(BlockMeta {
                 offset,
-                first_key: Key::from_vec(first_key).into_key_bytes(),
-                last_key: Key::from_vec(last_key).into_key_bytes(),
+                first_key: Key::from_vec_with_ts(first_key, first_key_ts).into_key_bytes(),
+                last_key: Key::from_vec_with_ts(last_key, last_key_ts).into_key_bytes(),
             });
         }
 
@@ -146,9 +147,9 @@ impl fmt::Debug for SsTable {
         let first_key_value = extract_first_key_value(&first_block);
         let last_key_value = extract_last_key_value(&last_block);
 
-        let first_key = String::from_utf8_lossy(&self.first_key.raw_ref());
+        let first_key = String::from_utf8_lossy(&self.first_key.key_ref());
         let first_value = String::from_utf8_lossy(&first_key_value.1);
-        let last_key = String::from_utf8_lossy(&self.last_key.raw_ref());
+        let last_key = String::from_utf8_lossy(&self.last_key.key_ref());
         let last_value = String::from_utf8_lossy(&last_key_value.1);
 
         // Trim values to last 4 characters

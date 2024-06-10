@@ -27,7 +27,7 @@ impl fmt::Debug for BlockIterator {
         write!(
             f,
             "current key: {}, index: {}",
-            String::from_utf8_lossy(self.key.raw_ref()),
+            String::from_utf8_lossy(self.key.key_ref()),
             self.idx
         )?;
         write!(f, " }} ")
@@ -49,9 +49,11 @@ impl BlockIterator {
         let mut buf = &block.data[..];
         let overlap_length = buf.get_u16_le(); //  read the overlap length (should be 0)
         assert_eq!(overlap_length, 0);
-        let key_length = buf.get_u16_le(); //  read the key length
-        let key = &buf[..key_length as usize];
-        KeyVec::from_vec(key.to_vec())
+        let key_length = buf.get_u16_le() as usize; //  read the key length
+        let key = &buf[..key_length];
+        buf.advance(key_length);
+        let ts = buf.get_u64_le();
+        KeyVec::from_vec_with_ts(key.to_vec(), ts)
     }
 
     /// Creates a block iterator and seek to the first entry.
@@ -97,30 +99,26 @@ impl BlockIterator {
 
     fn seek_to(&mut self, index: usize) {
         let offset = self.block.offsets[index] as usize;
-        let data_to_consider = &self.block.data[offset..];
+        let mut buf = &self.block.data[offset..];
 
-        let (key_overlap_length_raw, rest) = data_to_consider.split_at(2);
-        let key_overlap_length = u16::from_le_bytes(key_overlap_length_raw.try_into().unwrap());
+        let key_overlap_length = buf.get_u16_le() as usize;
+        let key_length = buf.get_u16_le() as usize;
 
-        let (key_length_raw, rest) = rest.split_at(2);
-        let key_length = u16::from_le_bytes(key_length_raw.try_into().unwrap());
+        let key = &buf[..key_length];
+        buf.advance(key_length);
 
-        let (key, rest) = rest.split_at(key_length as usize);
-        let key_overlap = &(self.first_key.raw_ref())[..key_overlap_length as usize];
-        let mut full_key = Vec::new();
-        full_key.extend_from_slice(&key_overlap);
-        full_key.extend_from_slice(&key);
-        self.key = KeyVec::from_vec(full_key);
+        let ts = buf.get_u64_le();
 
-        let (value_length_raw, rest) = rest.split_at(2);
-        let value_length = u16::from_le_bytes(value_length_raw.try_into().unwrap());
+        let key_overlap = &self.first_key.key_ref()[..key_overlap_length];
+        let mut full_key = Vec::with_capacity(key_overlap_length + key_length);
+        full_key.extend_from_slice(key_overlap);
+        full_key.extend_from_slice(key);
 
-        let (_, _) = rest.split_at(value_length as usize);
-        let new_value_start = offset + 2 + 2 + key_length as usize;
-        self.value_range = (
-            new_value_start + 2,
-            new_value_start + 2 + value_length as usize,
-        );
+        self.key = KeyVec::from_vec_with_ts(full_key, ts);
+
+        let value_length = buf.get_u16_le() as usize;
+        let value_start = offset + 2 + 2 + key_length + 8 + 2; //  offset + key overlap + key len + key + ts + val len
+        self.value_range = (value_start, value_start + value_length);
     }
 
     /// Move to the next key in the block.
