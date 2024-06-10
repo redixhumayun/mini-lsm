@@ -49,8 +49,7 @@ impl SsTableBuilder {
             self.first_key = key.to_key_vec().raw_ref().to_vec();
         }
 
-        self.key_hashes
-            .push(farmhash::fingerprint32(key.into_inner()));
+        self.key_hashes.push(farmhash::fingerprint32(key.raw_ref()));
 
         if self.builder.add(key, value) {
             self.last_key = key.to_key_vec().raw_ref().to_vec();

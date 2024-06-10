@@ -66,7 +66,7 @@ fn generate_small_block() -> Block {
         let value = value_of(idx);
         println!(
             "*****Adding key {} value {} pair to block*****",
-            String::from_utf8(key.clone().into_inner()).unwrap(),
+            String::from_utf8(key.clone().raw_ref().to_vec()).unwrap(),
             String::from_utf8(value.clone()).unwrap()
         );
         assert!(builder.add(key.as_key_slice(), &value[..]));

@@ -30,13 +30,13 @@ impl BlockBuilder {
     pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
         //  get the overlap of the key with the first key
         let key_overlap = key
-            .into_inner()
+            .raw_ref()
             .iter()
-            .zip(self.first_key.as_key_slice().into_inner().iter())
+            .zip(self.first_key.as_key_slice().raw_ref().iter())
             .take_while(|(a, b)| a == b)
             .count() as u16;
         let key_overlap_bytes = key_overlap.to_le_bytes();
-        let rest_of_key = &(key.into_inner())[key_overlap as usize..];
+        let rest_of_key = &(key.raw_ref())[key_overlap as usize..];
         let rest_of_key_len = (rest_of_key.len() as u16).to_le_bytes();
 
         let value_length = value.len();

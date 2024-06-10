@@ -440,7 +440,7 @@ impl LsmStorageInner {
             return false;
         }
         if let Some(bloom_filter) = &sstable.bloom {
-            if !bloom_filter.may_contain(farmhash::fingerprint32(key.as_key_slice().into_inner())) {
+            if !bloom_filter.may_contain(farmhash::fingerprint32(key.as_key_slice().raw_ref())) {
                 return false;
             }
         }
@@ -763,19 +763,19 @@ impl LsmStorageInner {
         table_last: &KeyBytes,
     ) -> bool {
         match lower {
-            Bound::Excluded(key) if key >= table_last.as_key_slice().into_inner() => {
+            Bound::Excluded(key) if key >= table_last.as_key_slice().raw_ref() => {
                 return false;
             }
-            Bound::Included(key) if key > table_last.as_key_slice().into_inner() => {
+            Bound::Included(key) if key > table_last.as_key_slice().raw_ref() => {
                 return false;
             }
             _ => {}
         }
         match upper {
-            Bound::Excluded(key) if key <= table_first.as_key_slice().into_inner() => {
+            Bound::Excluded(key) if key <= table_first.as_key_slice().raw_ref() => {
                 return false;
             }
-            Bound::Included(key) if key < table_first.as_key_slice().into_inner() => {
+            Bound::Included(key) if key < table_first.as_key_slice().raw_ref() => {
                 return false;
             }
             _ => {}

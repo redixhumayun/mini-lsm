@@ -106,7 +106,7 @@ impl BlockIterator {
         let key_length = u16::from_le_bytes(key_length_raw.try_into().unwrap());
 
         let (key, rest) = rest.split_at(key_length as usize);
-        let key_overlap = &(self.first_key.clone().into_inner())[..key_overlap_length as usize];
+        let key_overlap = &(self.first_key.raw_ref())[..key_overlap_length as usize];
         let mut full_key = Vec::new();
         full_key.extend_from_slice(&key_overlap);
         full_key.extend_from_slice(&key);
