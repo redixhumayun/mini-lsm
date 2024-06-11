@@ -137,65 +137,7 @@ pub struct SsTable {
 
 impl fmt::Debug for SsTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Retrieve the first and last key-value pairs
-        let first_block = self.read_block(0).expect("Unable to read first block");
-        let last_block = self
-            .read_block(self.num_of_blocks() - 1)
-            .expect("Unable to read last block");
-
-        // Extract the first key-value pair from the first block
-        let first_key_value = extract_first_key_value(&first_block);
-        let last_key_value = extract_last_key_value(&last_block);
-
-        let first_key = String::from_utf8_lossy(&self.first_key.key_ref());
-        let first_value = String::from_utf8_lossy(&first_key_value.1);
-        let last_key = String::from_utf8_lossy(&self.last_key.key_ref());
-        let last_value = String::from_utf8_lossy(&last_key_value.1);
-
-        // Trim values to last 4 characters
-        let trimmed_first_value = trim_to_last_4(&first_value);
-        let trimmed_last_value = trim_to_last_4(&last_value);
-
-        write!(
-            f,
-            "Key range: {} -> {} | Value range: {} -> {}",
-            first_key, last_key, trimmed_first_value, trimmed_last_value
-        )
-    }
-}
-
-fn extract_first_key_value(block: &Block) -> (Vec<u8>, Vec<u8>) {
-    let entry_start = *block.offsets.first().expect("Block is empty") as usize;
-    let key_value = decode_key_value(&block.data, entry_start);
-    key_value
-}
-
-fn extract_last_key_value(block: &Block) -> (Vec<u8>, Vec<u8>) {
-    let entry_start = *block.offsets.last().expect("Block is empty") as usize;
-    let key_value = decode_key_value(&block.data, entry_start);
-    key_value
-}
-
-fn decode_key_value(data: &[u8], entry_start: usize) -> (Vec<u8>, Vec<u8>) {
-    // Decode the key-value entry
-    let key_overlap = u16::from_le_bytes([data[entry_start], data[entry_start + 1]]) as usize;
-    let rest_of_key_len =
-        u16::from_le_bytes([data[entry_start + 2], data[entry_start + 3]]) as usize;
-    let rest_of_key = &data[entry_start + 4..entry_start + 4 + rest_of_key_len];
-
-    let value_length_pos = entry_start + 4 + rest_of_key_len;
-    let value_length =
-        u16::from_le_bytes([data[value_length_pos], data[value_length_pos + 1]]) as usize;
-    let value = &data[value_length_pos + 2..value_length_pos + 2 + value_length];
-
-    (rest_of_key.to_vec(), value.to_vec())
-}
-
-fn trim_to_last_4(value: &str) -> String {
-    if value.len() <= 4 {
-        value.to_string()
-    } else {
-        value[value.len() - 4..].to_string()
+        write!(f, "Key range: {:?} -> {:?}", self.first_key, self.last_key)
     }
 }
 
@@ -320,10 +262,7 @@ impl SsTable {
         if let Some(block_cache) = &self.block_cache {
             let block = block_cache
                 .try_get_with((self.id, block_idx), || self.read_block(block_idx))
-                .map_err(|e| {
-                    println!("Error: {:?}", e);
-                    anyhow::anyhow!(e)
-                })?;
+                .map_err(|e| anyhow::anyhow!("Error reading cached block: {}", e))?;
             Ok(block)
         } else {
             self.read_block(block_idx)

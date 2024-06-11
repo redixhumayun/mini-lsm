@@ -50,7 +50,6 @@ impl BlockBuilder {
         let value_length = value.len();
         let value_length_bytes = (value_length as u16).to_le_bytes();
 
-        // let entry_size = 2 + rest_of_key.len() + 2 + value_length + 2;   //  older version, only here for comparison
         //  TODO: Should i include timestamp in entry size calculation?
         let entry_size = OVERLAP_KEY_LENGTH_BYTES
             + REMAINING_KEY_LENGTH_BYTES

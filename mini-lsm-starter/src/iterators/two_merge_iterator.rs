@@ -15,7 +15,11 @@ pub struct TwoMergeIterator<A: StorageIterator, B: StorageIterator> {
 
 impl<A: StorageIterator, B: StorageIterator> fmt::Debug for TwoMergeIterator<A, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TwoMergeIterator {{ a: {:?}, b: {:?} }}", self.a, self.b)
+        writeln!(
+            f,
+            "TwoMergeIterator {{ a: {:?}, b: {:?}, using: {:?} }}",
+            self.a, self.b, self.use_iterator
+        )
     }
 }
 
