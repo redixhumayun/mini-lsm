@@ -254,6 +254,23 @@ This is possible, although I imagine there would be reduced throughput because e
 * Is it okay to put all block checksums altogether at the end of the SST file instead of store it along with the block? Why?
 This would make reads slower because every read of a block would involve reading another part of the file where the checksums are stored. Introduced an additional I/O unless the entire file is read at once.
 
+##  Week 3 Day 1
+Nothing for this.
+
+##  Week 3 Day 2
+* What is the difference of get in the MVCC engine and the engine you built in week 2?
+Earlier version accepted a byte slice (&[u8]) whereas this version accepts a `KeySlice` which has a timestamp of `TS_DEFAULT`
+
+* In week 2, you stop at the first memtable/level where a key is found when get. Can you do the same in the MVCC version?
+Yes, the same can still be done here. Timestamps are a monotonically increasing value and the latest value (with the largest TS) will be found further up the tree.
+
+* How do you convert KeySlice to &KeyBytes? Is it a safe/sound operation?
+`let key = key.to_key_vec().into_key_bytes();`
+Yes, it is.
+
+* Why do we need to take a write lock in the write path?
+To ensure that only a single write occurs so that the commit timestamp is updated correctly. This ensures that the timestamp is a monotonically increasing value.
+
 
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
