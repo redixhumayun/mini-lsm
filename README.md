@@ -271,6 +271,26 @@ Yes, it is.
 * Why do we need to take a write lock in the write path?
 To ensure that only a single write occurs so that the commit timestamp is updated correctly. This ensures that the timestamp is a monotonically increasing value.
 
+##  Week 3 Day 3
+* So far, we have assumed that our SST files use a monotonically increasing id as the file name. Is it okay to use <level>_<begin_key>_<end_key>_<max_ts>.sst as the SST file name? What might be the potential problems with that?
+This could work because the `max_ts` is guaranteed to be unique and will tell us the order of the file. Larger ts values are associated with newer files and vice versa. So `l0_a_c_20` and `l0_a_c_40` could be easily differentiated.
+
+* Consider an alternative implementation of transaction/snapshot. In our implementation, we have read_ts in our iterators and transaction context, so that the user can always access a consistent view of one version of the database based on the timestamp. Is it viable to store the current LSM state directly in the transaction context in order to gain a consistent snapshot? (i.e., all SST ids, their level information, and all memtables + ts) What are the pros/cons with that? What if the engine does not have memtables? What if the engine is running on a distributed storage system like S3 object store?
+Yes, it is possible to gain a consistent snapshot by storing the LSM state directly in the transaction context. This way, there is no reason to worry about the timestamps or potentially even store timestamps. Every transaction's context is all the data it has access to. 
+
+Pros:
+1. Easier implementation and maintenance
+2. No storage overhead of timestamps
+
+Cons:
+1. Much higher overhead of working memory because each transaction is storing a full snapshot in working memory while it runs
+
+Even if the engine did not have memtables it wouldn't make a difference because I'm assuming each transaction has a clone of the memtable as it was when the transaction was created.
+
+If the engine were running on S3, perhaps every transaction could use it's own object and store its transaction state in that and read from there whenever it needed. So maybe no need to depend on local memory which is an advantage? but then there is the overhead of the network traffic between the compute node and the S3 server.
+
+* Consider that you are implementing a backup utility of the MVCC Mini-LSM engine. Is it enough to simply copy all SST files out without backing up the LSM state? Why or why not?
+This won't tell us what levels the SST files belong to. We need to know how to reconstruct the state of the LSM tree, this will only give us the data of the LSM tree.
 
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
