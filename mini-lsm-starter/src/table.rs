@@ -39,7 +39,7 @@ impl BlockMeta {
     /// Encode block meta to a buffer.
     /// You may add extra fields to the buffer,
     /// in order to help keep track of `first_key` when decoding from the same buffer in the future.
-    pub fn encode_block_meta(block_meta: &[BlockMeta], buf: &mut Vec<u8>) {
+    pub fn encode_block_meta(block_meta: &[BlockMeta], buf: &mut Vec<u8>, max_ts: u64) {
         for meta in block_meta {
             buf.put_u16_le(meta.offset as u16);
 
@@ -53,13 +53,17 @@ impl BlockMeta {
             buf.put_slice(meta.last_key.key_ref());
             buf.put_u64_le(meta.last_key.ts());
         }
+        //  add the max timestamp
+        buf.put_u64_le(max_ts);
     }
 
     /// Decode block meta from a buffer.
-    pub fn decode_block_meta(mut buf: impl Buf) -> Vec<BlockMeta> {
+    pub fn decode_block_meta(mut buf: impl Buf) -> (Vec<BlockMeta>, u64) {
         let mut block_metas: Vec<BlockMeta> = Vec::new();
 
-        while buf.remaining() > 0 {
+        let max_ts_size = std::mem::size_of::<u64>();
+        let initial_buf_remaining = buf.remaining();
+        while buf.remaining() > max_ts_size {
             let offset = buf.get_u16_le() as usize;
 
             let first_key_length = buf.get_u16_le() as usize;
@@ -79,7 +83,13 @@ impl BlockMeta {
             });
         }
 
-        block_metas
+        assert!(
+            buf.remaining() == max_ts_size,
+            "decoding sst meta buffer resulted in incorrect length for max timestamp"
+        );
+        let max_ts = buf.get_u64_le();
+
+        (block_metas, max_ts)
     }
 }
 
@@ -164,7 +174,7 @@ impl SsTable {
 
         //  read the 4 bytes before the bloom offset to get the meta offset
         let raw_meta_offset = file.read(
-            bloom_filter_offset - META_BLOCK_OFFSET_LEN,
+            bloom_filter_offset - META_BLOCK_OFFSET_LEN, //  TODO: after adding the max_ts, need to read past the 4 bytes here
             META_BLOCK_OFFSET_LEN,
         )?;
         let meta_offset = (&raw_meta_offset[..]).get_u32_le() as u64;
@@ -190,7 +200,7 @@ impl SsTable {
         }
 
         //  decode the meta
-        let meta = BlockMeta::decode_block_meta(raw_meta_data);
+        let (meta, max_ts) = BlockMeta::decode_block_meta(raw_meta_data);
 
         Ok(SsTable {
             file,
@@ -201,7 +211,7 @@ impl SsTable {
             last_key: meta.last().unwrap().last_key.clone(),
             block_meta: meta,
             bloom: Some(bloom_filter),
-            max_ts: 0,
+            max_ts,
         })
     }
 

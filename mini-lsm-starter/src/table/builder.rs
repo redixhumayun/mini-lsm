@@ -24,6 +24,7 @@ pub struct SsTableBuilder {
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
     key_hashes: Vec<u32>,
+    max_ts: u64,
 }
 
 impl SsTableBuilder {
@@ -37,6 +38,7 @@ impl SsTableBuilder {
             meta: Vec::new(),
             block_size,
             key_hashes: Vec::new(),
+            max_ts: 0,
         }
     }
 
@@ -54,6 +56,7 @@ impl SsTableBuilder {
 
         if self.builder.add(key, value) {
             self.last_key.set_from_slice(key);
+            self.max_ts = self.max_ts.max(key.ts());
             return;
         }
 
@@ -62,6 +65,7 @@ impl SsTableBuilder {
         assert!(self.builder.add(key, value));
         self.first_key.set_from_slice(key);
         self.last_key.set_from_slice(key);
+        self.max_ts = self.max_ts.max(key.ts());
     }
 
     /// This function will take current block builder, build it and replace it with a fresh block builder
@@ -112,7 +116,7 @@ impl SsTableBuilder {
 
         //  encode meta section for each block
         let mut encoded_meta: Vec<u8> = Vec::new();
-        BlockMeta::encode_block_meta(&self.meta, &mut encoded_meta);
+        BlockMeta::encode_block_meta(&self.meta, &mut encoded_meta, self.max_ts);
 
         //  calculate the checksum for the metadata
         let meta_checksum = crc32fast::hash(&encoded_meta);
@@ -142,7 +146,7 @@ impl SsTableBuilder {
             last_key: self.meta.last().unwrap().last_key.clone(),
             block_meta: self.meta,
             bloom: Some(bloom_filter),
-            max_ts: 0,
+            max_ts: self.max_ts,
         })
     }
 

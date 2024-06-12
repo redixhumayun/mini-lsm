@@ -445,6 +445,10 @@ impl LsmStorageInner {
         compaction_filters.push(compaction_filter);
     }
 
+    pub fn get_with_ts(&self, key: &[u8], read_ts: u64) -> Result<Option<Bytes>> {
+        unimplemented!()
+    }
+
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
         let snapshot = {
@@ -699,6 +703,15 @@ impl LsmStorageInner {
     pub fn new_txn(&self) -> Result<()> {
         // no-op
         Ok(())
+    }
+
+    pub fn scan_with_ts(
+        &self,
+        lower: Bound<&[u8]>,
+        upper: Bound<&[u8]>,
+        read_ts: u64,
+    ) -> Result<FusedIterator<LsmIterator>> {
+        unimplemented!()
     }
 
     /// Create an iterator over a range of keys.

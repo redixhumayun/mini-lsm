@@ -25,9 +25,7 @@ fn test_task1_bloom_filter() {
         key_hashes.push(farmhash::fingerprint32(&key));
     }
     let bits_per_key = Bloom::bloom_bits_per_key(key_hashes.len(), 0.01);
-    println!("bits per key: {}", bits_per_key);
     let bloom = Bloom::build_from_key_hashes(&key_hashes, bits_per_key);
-    println!("bloom size: {}, k={}", bloom.filter.len(), bloom.k);
     assert!(bloom.k < 30);
     for idx in 0..num_of_keys() {
         let key = key_of(idx);

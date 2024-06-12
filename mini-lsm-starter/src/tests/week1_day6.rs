@@ -145,7 +145,6 @@ fn test_task3_sst_simple() {
     storage.put("0".as_bytes(), "000".as_bytes()).unwrap();
 
     let iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
-    println!("The number of iterators {}", iter.num_active_iterators());
 }
 
 #[test]

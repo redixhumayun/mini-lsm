@@ -168,7 +168,7 @@ impl MemTable {
         self.approximate_size
             .store(new_size, std::sync::atomic::Ordering::Relaxed);
         if let Some(wal) = self.wal.as_ref() {
-            wal.put(key, value)?; //  TODO: BRING THIS BACK
+            wal.put(key, value)?;
         }
         Ok(())
     }
@@ -212,6 +212,14 @@ impl MemTable {
     /// Only use this function when closing the database
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
+    }
+
+    pub fn get_max_ts(&self) -> u64 {
+        self.map
+            .iter()
+            .map(|entry| entry.key().ts())
+            .max()
+            .unwrap_or(TS_DEFAULT)
     }
 }
 

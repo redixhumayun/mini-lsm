@@ -27,15 +27,21 @@ pub struct LsmIterator {
     upper_bound: Bound<Bytes>,
     is_valid: bool,
     prev_key: Option<Bytes>,
+    read_ts: u64,
 }
 
 impl LsmIterator {
-    pub(crate) fn new(iter: LsmIteratorInner, upper_bound: Bound<Bytes>) -> Result<Self> {
+    pub(crate) fn new(
+        iter: LsmIteratorInner,
+        upper_bound: Bound<Bytes>,
+        read_ts: u64,
+    ) -> Result<Self> {
         let mut lsm_iter = Self {
             is_valid: iter.is_valid(),
             inner: iter,
             upper_bound,
             prev_key: None,
+            read_ts,
         };
 
         lsm_iter.skip_keys()?;
@@ -65,13 +71,25 @@ impl LsmIterator {
         Ok(())
     }
 
+    fn is_identical_key(&self, key: &Bytes) -> bool {
+        self.inner.key().key_ref() == key
+    }
+
+    fn is_invalid_read_ts(&self) -> bool {
+        self.inner.key().ts() > self.read_ts
+    }
+
+    fn should_skip(&self, key: &Bytes) -> bool {
+        self.is_identical_key(key) || self.is_invalid_read_ts()
+    }
+
     fn skip_keys(&mut self) -> Result<()> {
         loop {
             let key = self.prev_key.take().unwrap_or(Bytes::from_static(&[]));
-            //  skip all identical keys
-            while self.inner.is_valid() && self.inner.key().key_ref() == key {
+            while self.inner.is_valid() && self.should_skip(&key) {
                 self.next_inner()?;
             }
+            if self.inner.is_valid() {}
             if !self.inner.is_valid() {
                 self.is_valid = false;
                 break;
@@ -224,13 +242,12 @@ mod tests {
         let sst = Arc::new(sst);
         let l1_iter = SstConcatIterator::create_and_seek_to_first(vec![Arc::clone(&sst)]).unwrap();
         let l1_merge_iter = MergeIterator::create(vec![Box::new(l1_iter)]);
-        println!("the l1 merge iter {:?}\n", l1_merge_iter);
 
         let memtable = MemTable::create(1);
         for i in 0..=100 {
             let key = Bytes::from(format!("key{:03}", i));
             let ts = 100 + i;
-            let value = Bytes::from(format!("value{:03}", i));
+            let value = Bytes::from(format!("memvalue{:03}", i));
             memtable
                 .put(KeySlice::for_testing_from_slice_with_ts(&key, ts), &value)
                 .unwrap();
@@ -242,13 +259,71 @@ mod tests {
             TwoMergeIterator::create(memtable_merge_iter, MergeIterator::create(Vec::new()))
                 .unwrap();
         let lsm_iter_inner = TwoMergeIterator::create(two_merge_iter_1, l1_merge_iter).unwrap();
-        let mut lsm_iter = LsmIterator::new(lsm_iter_inner, Bound::Unbounded).unwrap();
+        let mut lsm_iter = LsmIterator::new(lsm_iter_inner, Bound::Unbounded, 201).unwrap();
 
         //  assert that each key is only seen once
         let expected_keys = (0..=100).map(|i| Bytes::from(format!("key{:03}", i)));
-        for key in expected_keys {
+        let expected_values = (0..=100).map(|i| Bytes::from(format!("memvalue{:03}", i)));
+        for (key, value) in expected_keys.zip(expected_values) {
             assert_eq!(lsm_iter.key(), key);
+            assert_eq!(lsm_iter.value(), value);
             lsm_iter.next().unwrap();
         }
+        assert!(!lsm_iter.is_valid());
+    }
+
+    /// This test asserts that an LSM iterator will respect snapshot txn semantics and return keys less than or equal
+    /// to a specific timestamp
+    #[test]
+    fn lsm_iter_read_ts() {
+        let dir = tempdir().unwrap();
+        let options = LsmStorageOptions::default_for_week2_test(CompactionOptions::NoCompaction);
+        let storage = LsmStorageInner::open(&dir, options).unwrap();
+        let mut sst_data: Vec<((Bytes, u64), Bytes)> = Vec::new();
+        for i in 0..=100 {
+            let key = Bytes::from(format!("key{:03}", i));
+            let ts = i;
+            let value: Bytes = Bytes::from(format!("value{:03}", i));
+            sst_data.push(((key, ts), value));
+        }
+        let sst = generate_sst_with_ts(
+            0,
+            &dir.path().join("0.sst"),
+            sst_data,
+            Some(storage.block_cache),
+        );
+        let sst = Arc::new(sst);
+        let l1_iter = SstConcatIterator::create_and_seek_to_first(vec![Arc::clone(&sst)]).unwrap();
+        let l1_merge_iter = MergeIterator::create(vec![Box::new(l1_iter)]);
+
+        let memtable = MemTable::create(1);
+        for i in 0..=100 {
+            let key = Bytes::from(format!("key{:03}", i));
+            let ts = 101 + i;
+            let value = Bytes::from(format!("memvalue{:03}", i));
+            memtable
+                .put(KeySlice::for_testing_from_slice_with_ts(&key, ts), &value)
+                .unwrap();
+        }
+        let memtable_iter = memtable.scan(Bound::Unbounded, Bound::Unbounded);
+        let memtable_merge_iter = MergeIterator::create(vec![Box::new(memtable_iter)]);
+
+        let two_merge_iter_1 =
+            TwoMergeIterator::create(memtable_merge_iter, MergeIterator::create(Vec::new()))
+                .unwrap();
+        let lsm_iter_inner = TwoMergeIterator::create(two_merge_iter_1, l1_merge_iter).unwrap();
+        let mut lsm_iter = LsmIterator::new(lsm_iter_inner, Bound::Unbounded, 100).unwrap();
+
+        //  assert that each key is only seen once
+        let expected_keys = (0..=100).map(|i| Bytes::from(format!("key{:03}", i)));
+        let expected_values = (0..=100).map(|i| Bytes::from(format!("value{:03}", i)));
+        for (key, value) in expected_keys.zip(expected_values) {
+            assert_eq!(lsm_iter.key(), key);
+            assert_eq!(lsm_iter.value(), value);
+            if lsm_iter.is_valid() {
+                lsm_iter.next().unwrap();
+            }
+        }
+        assert!(!lsm_iter.is_valid());
     }
 }

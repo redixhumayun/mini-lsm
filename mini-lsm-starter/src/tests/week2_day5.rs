@@ -40,7 +40,6 @@ fn test_integration_simple() {
 
 fn test_integration(compaction_options: CompactionOptions) {
     let dir = tempdir().unwrap();
-    println!("the dir {:?}", dir);
     let storage = MiniLsm::open(
         &dir,
         LsmStorageOptions::default_for_week2_test(compaction_options.clone()),
