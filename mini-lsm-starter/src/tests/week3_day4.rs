@@ -3,7 +3,6 @@ use tempfile::tempdir;
 
 use crate::{
     compact::CompactionOptions,
-    iterators::StorageIterator,
     lsm_storage::{LsmStorageOptions, MiniLsm, WriteBatchRecord},
     mvcc::watermark::Watermark,
 };

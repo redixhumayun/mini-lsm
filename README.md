@@ -292,6 +292,24 @@ If the engine were running on S3, perhaps every transaction could use it's own o
 * Consider that you are implementing a backup utility of the MVCC Mini-LSM engine. Is it enough to simply copy all SST files out without backing up the LSM state? Why or why not?
 This won't tell us what levels the SST files belong to. We need to know how to reconstruct the state of the LSM tree, this will only give us the data of the LSM tree.
 
+##  Week 3 Day 4
+* In our implementation, we manage watermarks by ourselves with the lifecycle of Transaction (so-called un-managed mode). If the user intends to manage key timestamps and the watermarks by themselves (i.e., when they have their own timestamp generator), what do you need to do in the write_batch/get/scan API to validate their requests? Is there any architectural assumption we had that might be hard to maintain in this case?
+In managed mode, optionally allow the user to pass in a watermark when doing any of the above 3 calls and this is what will indicate to the system what records can be garbage collected.
+
+* Why do we need to store an Arc of Transaction inside a transaction iterator?
+To ensure that the transaction context remains valid and is not prematurely dropped while the iterator is in use
+
+* What is the condition to fully remove a key from the SST file?
+The key should be at or below the watermark, the value should be empty and the compact to bottom level option should be set to true.
+
+* For now, we only remove a key when compacting to the bottom-most level. Is there any other prior time that we can remove the key? (Hint: you know the start/end key of each SST in all levels.)
+If a key has been deleted at some level (say l1) and every other SST at the same level and every SST at every level below does not have this key in it's range, the key can be safely ignore because we know there is no older version of this key which will give a falsey read in the future.
+
+* Consider the case that the user creates a long-running transaction and we could not garbage collect anything. The user keeps updating a single key. Eventually, there could be a key with thousands of versions in a single SST file. How would it affect performance, and how would you deal with it?
+The file size will grow very large and compacting this file will become a problem since it can't be read into memory. Even doing read requests on this file will be a problem (not for get since bloom filter will be useful to give a negative there).
+Perform garbage collection on that file separately before doing compaction on the file. This will reduce the size of the file significantly so it will be easier to compact.
+Alternatively, limit the number of versions of any single key that can be written to a single SST.
+
 
 ![banner](./mini-lsm-book/src/mini-lsm-logo.png)
 
