@@ -540,9 +540,8 @@ impl LsmStorageInner {
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(self: &Arc<Self>, key: &[u8]) -> Result<Option<Bytes>> {
-        self.mvcc()?
-            .new_txn(Arc::clone(&self), self.options.serializable)
-            .get(key)
+        let txn = self.new_txn()?;
+        txn.get(key)
     }
 
     /// Write a batch of data into the storage.
@@ -819,9 +818,7 @@ impl LsmStorageInner {
 
     /// Create an iterator over a range of keys.
     pub fn scan(self: &Arc<Self>, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<TxnIterator> {
-        let txn = self
-            .mvcc()?
-            .new_txn(Arc::clone(&self), self.options.serializable);
+        let txn = self.new_txn()?;
         txn.scan(lower, upper)
     }
 
