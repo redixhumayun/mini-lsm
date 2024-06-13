@@ -254,7 +254,8 @@ fn test_task2_lsm_iterator_mvcc() {
         vec![(Bytes::from("a"), Bytes::from("4"))],
     );
 
-    //  TODO: The below test fails still need to figure out why that is the case
+    //  TODO: The below test fails still need to figure out why that is the case. It should return no keys because only keys in snapshot at this point are "a", "b" (deleted) and "c".
+    //  Since "a" and "c" are excluded, and "b" is deleted, no keys should be returned.
     // check_lsm_iter_result_by_key(
     //     &mut snapshot6
     //         .scan(Bound::Excluded(b"a"), Bound::Excluded(b"c"))

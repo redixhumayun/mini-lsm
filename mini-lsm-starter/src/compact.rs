@@ -118,15 +118,43 @@ impl LsmStorageInner {
     fn build_sstables_from_iterator(
         &self,
         mut iter: impl for<'a> StorageIterator<KeyType<'a> = key::Key<&'a [u8]>>,
+        compact_to_bottom_level: bool,
+        watermark: u64,
     ) -> Result<Vec<Arc<SsTable>>> {
         let mut sstables = Vec::new();
         let mut sstable_builder = SsTableBuilder::new(self.options.block_size);
         let mut is_built = false;
         let mut prev_key: Vec<u8> = Vec::new();
+        let mut hit_watermark = false;
         while iter.is_valid() {
+            let _curr_key = String::from_utf8_lossy(iter.key().key_ref());
+            let _curr_value = String::from_utf8_lossy(iter.value());
+            let _curr_wm = iter.key().ts();
+
             is_built = false;
             let same_as_prev_key = iter.key().key_ref() == prev_key;
-            sstable_builder.add(iter.key(), iter.value());
+
+            if !same_as_prev_key {
+                prev_key = iter.key().key_ref().to_vec();
+                hit_watermark = false;
+            }
+
+            if iter.key().ts() > watermark {
+                //  always add keys above watermark
+                sstable_builder.add(iter.key(), iter.value());
+            } else {
+                //  key is below or equal to watermark
+                if !hit_watermark {
+                    //  first version of this key at or below watermark
+                    hit_watermark = true;
+                    if compact_to_bottom_level && !iter.value().is_empty() {
+                        sstable_builder.add(iter.key(), iter.value());
+                    }
+                    if !compact_to_bottom_level {
+                        sstable_builder.add(iter.key(), iter.value());
+                    }
+                }
+            }
 
             if !same_as_prev_key && sstable_builder.estimated_size() >= self.options.target_sst_size
             {
@@ -140,7 +168,6 @@ impl LsmStorageInner {
                 sstable_builder = SsTableBuilder::new(self.options.block_size);
                 sstables.push(Arc::new(sstable));
             }
-            prev_key = iter.key().key_ref().to_vec();
             iter.next()?;
         }
 
@@ -195,7 +222,11 @@ impl LsmStorageInner {
                 let merge_iterator = MergeIterator::create(iterators);
 
                 //  iterate over merge iterator and create new SSTables
-                self.build_sstables_from_iterator(merge_iterator)
+                self.build_sstables_from_iterator(
+                    merge_iterator,
+                    task.compact_to_bottom_level(),
+                    self.mvcc().expect("mvcc not found").watermark(),
+                )
             }
             CompactionTask::Simple(SimpleLeveledCompactionTask {
                 upper_level,
@@ -231,7 +262,11 @@ impl LsmStorageInner {
                         SstConcatIterator::create_and_seek_to_first(lower_sstables)?;
 
                     let iter = TwoMergeIterator::create(upper_sstables_iter, lower_sstables_iter)?;
-                    self.build_sstables_from_iterator(iter)
+                    self.build_sstables_from_iterator(
+                        iter,
+                        task.compact_to_bottom_level(),
+                        self.mvcc().expect("mvcc not found").watermark(),
+                    )
                 }
                 None => {
                     let upper_sstables: Vec<_> = upper_level_sst_ids
@@ -266,7 +301,11 @@ impl LsmStorageInner {
                         SstConcatIterator::create_and_seek_to_first(lower_sstables)?;
 
                     let iter = TwoMergeIterator::create(upper_sstables_iter, lower_sstables_iter)?;
-                    self.build_sstables_from_iterator(iter)
+                    self.build_sstables_from_iterator(
+                        iter,
+                        task.compact_to_bottom_level(),
+                        self.mvcc().expect("mvcc not found").watermark(),
+                    )
                 }
             },
             CompactionTask::Leveled(LeveledCompactionTask {
@@ -304,7 +343,11 @@ impl LsmStorageInner {
                         SstConcatIterator::create_and_seek_to_first(lower_sstables)?;
 
                     let iter = TwoMergeIterator::create(upper_sstables_iter, lower_sstables_iter)?;
-                    self.build_sstables_from_iterator(iter)
+                    self.build_sstables_from_iterator(
+                        iter,
+                        task.compact_to_bottom_level(),
+                        self.mvcc().expect("mvcc not found").watermark(),
+                    )
                 }
                 None => {
                     let upper_sstables: Vec<_> = upper_level_sst_ids
@@ -339,7 +382,11 @@ impl LsmStorageInner {
                         SstConcatIterator::create_and_seek_to_first(lower_sstables)?;
 
                     let iter = TwoMergeIterator::create(upper_sstables_iter, lower_sstables_iter)?;
-                    self.build_sstables_from_iterator(iter)
+                    self.build_sstables_from_iterator(
+                        iter,
+                        task.compact_to_bottom_level(),
+                        self.mvcc().expect("mvcc not found").watermark(),
+                    )
                 }
             },
             _ => {
@@ -530,7 +577,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::{
-        iterators::concat_iterator::SstConcatIterator,
+        iterators::{concat_iterator::SstConcatIterator, StorageIterator},
         lsm_storage::{LsmStorageInner, LsmStorageOptions},
         tests::harness::generate_sst_with_ts,
     };
@@ -538,7 +585,7 @@ mod tests {
     use super::CompactionOptions;
 
     #[test]
-    fn test_keys_in_same_sst() {
+    fn test_identical_keys_in_same_sst() {
         let dir = tempdir().unwrap();
         let mut options =
             LsmStorageOptions::default_for_week2_test(CompactionOptions::NoCompaction);
@@ -559,7 +606,69 @@ mod tests {
             Some(storage.block_cache.clone()),
         );
         let iter = SstConcatIterator::create_and_seek_to_first(vec![Arc::new(sst)]).unwrap();
-        let result = storage.build_sstables_from_iterator(iter).unwrap();
+        let result = storage
+            .build_sstables_from_iterator(iter, false, 0)
+            .unwrap();
         assert_eq!(result.len(), 1, "the number of sstables returned from build_sstables_from_iterator for the same key is > 1");
+    }
+
+    #[test]
+    fn test_watermark_compaction() {
+        let dir = tempdir().unwrap();
+        let options = LsmStorageOptions::default_for_week2_test(CompactionOptions::NoCompaction);
+        let storage = LsmStorageInner::open(&dir, options).unwrap();
+        let mut sst_data: Vec<((Bytes, u64), Bytes)> = Vec::new();
+        let mut ts = 1;
+        sst_data.push(((Bytes::from("a"), ts), Bytes::from("1")));
+        sst_data.push(((Bytes::from("b"), ts), Bytes::from("1")));
+        ts += 1;
+        sst_data.push(((Bytes::from("a"), ts), Bytes::from("2")));
+        sst_data.push(((Bytes::from("d"), ts), Bytes::from("2")));
+        ts += 1;
+        sst_data.push(((Bytes::from("a"), ts), Bytes::from("3")));
+        sst_data.push(((Bytes::from("d"), ts), Bytes::from("")));
+        ts += 1;
+        sst_data.push(((Bytes::from("c"), ts), Bytes::from("4")));
+        sst_data.push(((Bytes::from("a"), ts), Bytes::from("")));
+        sst_data.sort_by(|a, b| {
+            let key_order = a.0 .0.cmp(&b.0 .0);
+            if key_order == std::cmp::Ordering::Equal {
+                b.0 .1.cmp(&a.0 .1) // Reverse the order for timestamp
+            } else {
+                key_order
+            }
+        });
+        let sst = generate_sst_with_ts(
+            0,
+            dir.path().join("0.sst"),
+            sst_data,
+            Some(storage.block_cache.clone()),
+        );
+        let iter = SstConcatIterator::create_and_seek_to_first(vec![Arc::new(sst)]).unwrap();
+        let new_sst = storage.build_sstables_from_iterator(iter, true, 1).unwrap();
+        let expected_keys = vec![
+            (Bytes::from("a"), Bytes::new()),
+            (Bytes::from("a"), Bytes::from("3")),
+            (Bytes::from("a"), Bytes::from("2")),
+            (Bytes::from("a"), Bytes::from("1")),
+            (Bytes::from("b"), Bytes::from("1")),
+            (Bytes::from("c"), Bytes::from("4")),
+            (Bytes::from("d"), Bytes::new()),
+            (Bytes::from("d"), Bytes::from("2")),
+        ];
+        let mut res_iter = SstConcatIterator::create_and_seek_to_first(new_sst).unwrap();
+        for (expected_key, expected_value) in expected_keys {
+            assert_eq!(
+                res_iter.key().key_ref(),
+                expected_key.as_ref(),
+                "expected key value ({:?},{:?}), got key ({:?},{:?})",
+                String::from_utf8_lossy(expected_key.as_ref()),
+                String::from_utf8_lossy(expected_value.as_ref()),
+                String::from_utf8_lossy(res_iter.key().key_ref()),
+                String::from_utf8_lossy(res_iter.value())
+            );
+            assert_eq!(res_iter.value(), expected_value.as_ref());
+            res_iter.next().unwrap();
+        }
     }
 }

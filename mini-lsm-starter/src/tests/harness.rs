@@ -27,7 +27,7 @@ pub struct MockIterator {
 
 impl fmt::Debug for MockIterator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MockIterator")
+        write!(f, "MockIterator {{ index: {} }}", self.index)
     }
 }
 
@@ -105,9 +105,11 @@ where
         assert_eq!(
             k,
             iter.key().for_testing_key_ref(),
-            "expected key: {:?}, actual key: {:?}",
+            "expected key: {:?}, value {:?}, actual key: {:?}, value: {:?}",
             k,
+            v,
             as_bytes(iter.key().for_testing_key_ref()),
+            as_bytes(iter.value()),
         );
         assert_eq!(
             v,

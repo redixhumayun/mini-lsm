@@ -547,17 +547,20 @@ impl LsmStorageInner {
 
     /// Write a batch of data into the storage.
     pub fn write_batch<T: AsRef<[u8]>>(&self, batch: &[WriteBatchRecord<T>]) -> Result<()> {
+        let _ = self.mvcc()?.write_lock.lock();
+        let ts = self.mvcc()?.latest_commit_ts() + 1;
+
         for record in batch {
-            self.write_record(record)?;
+            self.write_record(record, ts)?;
         }
+        self.mvcc()?.update_commit_ts(ts);
+
         Ok(())
     }
 
-    fn write_record<T: AsRef<[u8]>>(&self, record: &WriteBatchRecord<T>) -> Result<()> {
+    fn write_record<T: AsRef<[u8]>>(&self, record: &WriteBatchRecord<T>, ts: u64) -> Result<()> {
         let state = self.state.read();
         {
-            let _ = self.mvcc()?.write_lock.lock();
-            let ts = self.mvcc()?.latest_commit_ts() + 1;
             match record {
                 WriteBatchRecord::Put(key, value) => {
                     state
@@ -570,7 +573,6 @@ impl LsmStorageInner {
                         .put(KeySlice::from_slice(key.as_ref(), ts), &[])?;
                 }
             }
-            self.mvcc()?.update_commit_ts(ts);
         }
 
         if state.memtable.approximate_size() >= self.options.target_sst_size {
