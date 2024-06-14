@@ -11,6 +11,7 @@ use std::{
 
 use crossbeam_skiplist::SkipMap;
 use parking_lot::Mutex;
+use txn::ReadWriteSets;
 
 use crate::lsm_storage::LsmStorageInner;
 
@@ -59,12 +60,22 @@ impl LsmMvccInner {
         let mut ts = self.ts.lock();
         let timestamp = ts.0;
         ts.1.add_reader(timestamp);
+        let key_hashes = {
+            if serializable {
+                Some(Mutex::new(ReadWriteSets::new(
+                    HashSet::new(),
+                    HashSet::new(),
+                )))
+            } else {
+                None
+            }
+        };
         Arc::new(Transaction {
             read_ts: timestamp,
             inner,
             local_storage: Arc::new(SkipMap::new()),
             committed: Arc::new(AtomicBool::new(false)),
-            key_hashes: Some(Mutex::new((HashSet::new(), HashSet::new()))),
+            key_hashes,
         })
     }
 }
