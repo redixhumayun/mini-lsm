@@ -318,5 +318,9 @@ OCC checks for conflicts at commit time. Pessimistic mechanisms would take a loc
 
 ##  Week 3 Day 6
 * If you have some experience with building a relational database, you may think about the following question: assume that we build a database based on Mini-LSM where we store each row in the relation table as a key-value pair (key: primary key, value: serialized row) and enable serializable verification, does the database system directly gain ANSI serializable isolation level capability? Why or why not?
+Keep forgetting the definition of ANSI serializable isolation but it's unlikely
+
 * The thing we implement here is actually write snapshot-isolation (see A critique of snapshot isolation) that guarantees serializable. Is there any cases where the execution is serializable, but will be rejected by the write snapshot-isolation validation?
+
+
 * There are databases that claim they have serializable snapshot isolation support by only tracking the keys accessed in gets and scans (instead of key range). Do they really prevent write skews caused by phantoms? (Okay... Actually, I'm talking about BadgerDB.)

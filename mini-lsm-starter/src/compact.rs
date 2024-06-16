@@ -20,7 +20,7 @@ use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
 use crate::key;
-use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
+use crate::lsm_storage::{CompactionFilter, LsmStorageInner, LsmStorageState};
 use crate::manifest::ManifestRecord;
 use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
@@ -115,6 +115,13 @@ pub enum CompactionOptions {
 }
 
 impl LsmStorageInner {
+    fn does_comp_filter_prefix_match(&self, key: &[u8]) -> bool {
+        let compaction_filters = self.compaction_filters.lock();
+        compaction_filters.iter().any(|filter| match filter {
+            CompactionFilter::Prefix(bytes) => key.starts_with(bytes),
+        })
+    }
+
     fn build_sstables_from_iterator(
         &self,
         mut iter: impl for<'a> StorageIterator<KeyType<'a> = key::Key<&'a [u8]>>,
@@ -147,6 +154,9 @@ impl LsmStorageInner {
                 if !hit_watermark {
                     //  first version of this key at or below watermark
                     hit_watermark = true;
+                    if self.does_comp_filter_prefix_match(iter.key().key_ref()) {
+                        continue;
+                    }
                     if compact_to_bottom_level && !iter.value().is_empty() {
                         sstable_builder.add(iter.key(), iter.value());
                     }
