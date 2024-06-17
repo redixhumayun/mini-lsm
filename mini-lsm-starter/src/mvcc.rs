@@ -1,6 +1,3 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 pub mod txn;
 pub mod watermark;
 
@@ -17,6 +14,7 @@ use crate::lsm_storage::LsmStorageInner;
 
 use self::{txn::Transaction, watermark::Watermark};
 
+#[derive(Debug, Clone)]
 pub(crate) struct CommittedTxnData {
     pub(crate) key_hashes: HashSet<u32>,
     #[allow(dead_code)]

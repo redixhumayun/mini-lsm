@@ -62,7 +62,6 @@ fn test_serializable_3_ts_range() {
     assert_eq!(storage.get(b"key2").unwrap(), Some(Bytes::from("2")));
 }
 
-//  TODO: Failing test FIX!!
 #[test]
 fn test_serializable_4_scan() {
     let dir = tempdir().unwrap();
@@ -106,4 +105,20 @@ fn test_serializable_5_read_only() {
     txn2.commit().unwrap();
     assert_eq!(storage.get(b"key1").unwrap(), Some(Bytes::from("2")));
     assert_eq!(storage.get(b"key2").unwrap(), Some(Bytes::from("2")));
+}
+
+#[test]
+fn test_serializable_6_gc() {
+    let dir = tempdir().unwrap();
+    let mut options = LsmStorageOptions::default_for_week2_test(CompactionOptions::NoCompaction);
+    options.serializable = true;
+    let storage = MiniLsm::open(&dir, options.clone()).unwrap();
+    let txn1 = storage.new_txn().unwrap();
+    let txn2 = storage.new_txn().unwrap();
+    txn1.put(b"key1", b"1");
+    txn2.put(b"key1", b"2");
+    txn2.commit().unwrap();
+    txn1.commit().unwrap();
+    let v = storage.get(b"key1").unwrap().unwrap();
+    assert_eq!(v, Bytes::from("1"));
 }

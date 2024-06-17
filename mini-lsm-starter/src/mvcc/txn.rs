@@ -1,6 +1,3 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 use core::fmt;
 use std::{
     collections::HashSet,
@@ -167,6 +164,7 @@ impl Transaction {
         let expected_commit_ts = self.inner.mvcc()?.latest_commit_ts() + 1;
         self.is_txn_valid(self.read_ts, expected_commit_ts, &rwset)?;
 
+        //  valid txn that can be committed
         self.committed
             .store(true, std::sync::atomic::Ordering::SeqCst);
         let batch = self
@@ -186,6 +184,14 @@ impl Transaction {
                 commit_ts: expected_commit_ts,
             },
         );
+
+        //  clean up old txn's below watermark
+        let watermark = self.inner.mvcc()?.watermark();
+        self.inner
+            .mvcc()?
+            .committed_txns
+            .lock()
+            .retain(|ts, _| *ts >= watermark);
         Ok(())
     }
 
@@ -197,11 +203,11 @@ impl Transaction {
     ) -> Result<()> {
         let txns = self.inner.mvcc()?.committed_txns.lock();
         let txns = txns.range((Bound::Excluded(lower), Bound::Excluded(upper)));
-        for (ts, txn_data) in txns.into_iter() {
+        for (_, txn_data) in txns.into_iter() {
             let is_overlap = rwset
                 .read_set
                 .iter()
-                .any(|write_key| txn_data.key_hashes.contains(write_key));
+                .any(|read_key| txn_data.key_hashes.contains(read_key));
             if is_overlap {
                 return Err(anyhow::anyhow!(
                     "this txn cannot be committed because it violates SSI"
