@@ -318,9 +318,14 @@ OCC checks for conflicts at commit time. Pessimistic mechanisms would take a loc
 
 ##  Week 3 Day 6
 * If you have some experience with building a relational database, you may think about the following question: assume that we build a database based on Mini-LSM where we store each row in the relation table as a key-value pair (key: primary key, value: serialized row) and enable serializable verification, does the database system directly gain ANSI serializable isolation level capability? Why or why not?
-Keep forgetting the definition of ANSI serializable isolation but it's unlikely
+I think it should since WSI guarantees that there no conflicting transactions will commit under the serializable isolation level. Although, I'm not a 100% sure of this.
 
-* The thing we implement here is actually write snapshot-isolation (see A critique of snapshot isolation) that guarantees serializable. Is there any cases where the execution is serializable, but will be rejected by the write snapshot-isolation validation?
+* The thing we implement here is actually write snapshot-isolation (see A critique of snapshot isolation) that guarantees serializability. Is there any cases where the execution is serializable, but will be rejected by the write snapshot-isolation validation?
+Imagine a situation where there are two transactions t1 and t2
+t1 reads a key "key1" and writes to a key "key2"
+t2 writes to a key "key1"
 
+if t1 commits after t2, it will be rejected because it's read set overlaps with t2's write set. This is assuming that t1's write of "key2" has no input from it's read on "key1". The commit validator will never have insight into this so it will reject the txn even though it is still serializable
 
 * There are databases that claim they have serializable snapshot isolation support by only tracking the keys accessed in gets and scans (instead of key range). Do they really prevent write skews caused by phantoms? (Okay... Actually, I'm talking about BadgerDB.)
+Phantoms occur when a txn reads a set of rows and then another txn adds to that initial set of rows. However, without tracking write sets this could never be determined. So no, you can't prevent phantom reads and write skews without tracking write sets.
